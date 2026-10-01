@@ -6,7 +6,7 @@ import os
 import tempfile
 import unittest
 
-from flintai.cli.file_filter import (
+from switch_trust.cli.file_filter import (
     FRAMEWORK_ROOTS,
     FileType,
     RelevantFile,

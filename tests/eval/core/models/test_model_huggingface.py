@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model_huggingface import HuggingFaceModel
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model_huggingface import HuggingFaceModel
 
 
 class TestHuggingFaceModel(unittest.IsolatedAsyncioTestCase):
@@ -46,7 +46,7 @@ class TestHuggingFaceModel(unittest.IsolatedAsyncioTestCase):
         mock_pipeline = MagicMock()
         mock_pipeline.return_value = [{"generated_text": "response"}]
 
-        from flintai.eval.common.schema import Part
+        from switch_trust.eval.common.schema import Part
 
         content = Content(
             role=Role.USER,
@@ -63,7 +63,7 @@ class TestHuggingFaceModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(prompt, "Hello World")
 
     @patch(
-        "flintai.eval.core.models.model_huggingface."
+        "switch_trust.eval.core.models.model_huggingface."
         "require_transformers_pipeline"
     )
     def test_init_from_model_name(self, mock_require):

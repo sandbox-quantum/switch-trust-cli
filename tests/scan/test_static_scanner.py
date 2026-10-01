@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from flintai.scan.static_scanner import (
+from switch_trust.scan.static_scanner import (
     BANDIT_SEVERITY_MAP,
     OPENGREP_SEVERITY_MAP,
     StaticFinding,
@@ -60,8 +60,8 @@ class TestRunBandit(unittest.TestCase):
     # Bandit is a core dependency, but the scanner still guards on
     # `_module_available` in case it can't be imported at runtime, so it is
     # patched throughout: these tests cover parsing, not installation.
-    @patch("flintai.scan.static_scanner._module_available", return_value=True)
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner._module_available", return_value=True)
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     def test_parses_json_output(self, mock_run, mock_available):
         mock_run.return_value = MagicMock(
             stdout=json.dumps(
@@ -87,22 +87,22 @@ class TestRunBandit(unittest.TestCase):
         self.assertEqual(findings[0].rule_id, "B102")
         self.assertEqual(findings[0].severity, "high")
 
-    @patch("flintai.scan.static_scanner._module_available", return_value=True)
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner._module_available", return_value=True)
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     def test_empty_output(self, mock_run, mock_available):
         mock_run.return_value = MagicMock(stdout="", returncode=0)
         findings = run_bandit("/tmp/scan")
         self.assertEqual(findings, [])
 
-    @patch("flintai.scan.static_scanner._module_available", return_value=True)
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner._module_available", return_value=True)
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     def test_handles_exception(self, mock_run, mock_available):
         mock_run.side_effect = FileNotFoundError("bandit not found")
         findings = run_bandit("/tmp/scan")
         self.assertEqual(findings, [])
 
-    @patch("flintai.scan.static_scanner._module_available", return_value=False)
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner._module_available", return_value=False)
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     def test_skips_when_module_not_installed(self, mock_run, mock_available):
         findings = run_bandit("/tmp/scan")
         self.assertEqual(findings, [])
@@ -110,14 +110,14 @@ class TestRunBandit(unittest.TestCase):
 
 
 class TestRunOpengrep(unittest.TestCase):
-    @patch("flintai.scan.static_scanner.find_opengrep_binary", return_value=None)
+    @patch("switch_trust.scan.static_scanner.find_opengrep_binary", return_value=None)
     def test_skips_when_binary_not_found(self, mock_find):
         findings = run_opengrep("/tmp", "/tmp/rules.yaml")
         self.assertEqual(findings, [])
 
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     @patch(
-        "flintai.scan.static_scanner.find_opengrep_binary",
+        "switch_trust.scan.static_scanner.find_opengrep_binary",
         return_value="/usr/bin/opengrep",
     )
     def test_parses_json_output(self, mock_find, mock_run):
@@ -144,9 +144,9 @@ class TestRunOpengrep(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].tool, "opengrep")
 
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     @patch(
-        "flintai.scan.static_scanner.find_opengrep_binary",
+        "switch_trust.scan.static_scanner.find_opengrep_binary",
         return_value="/usr/bin/opengrep",
     )
     def test_handles_empty_output(self, mock_find, mock_run):
@@ -159,8 +159,8 @@ class TestRunDetectSecrets(unittest.TestCase):
     # detect-secrets is a core dependency, but the scanner still guards on
     # `_module_available` in case it can't be imported at runtime, so it is
     # patched throughout: these tests cover parsing, not installation.
-    @patch("flintai.scan.static_scanner._module_available", return_value=True)
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner._module_available", return_value=True)
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     def test_parses_output(self, mock_run, mock_available):
         mock_run.return_value = MagicMock(
             stdout=json.dumps(
@@ -181,8 +181,8 @@ class TestRunDetectSecrets(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].tool, "detect_secrets")
 
-    @patch("flintai.scan.static_scanner._module_available", return_value=True)
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner._module_available", return_value=True)
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     def test_empty_results(self, mock_run, mock_available):
         mock_run.return_value = MagicMock(
             stdout=json.dumps({"results": {}}),
@@ -191,15 +191,15 @@ class TestRunDetectSecrets(unittest.TestCase):
         findings = run_detect_secrets("/tmp/scan")
         self.assertEqual(findings, [])
 
-    @patch("flintai.scan.static_scanner._module_available", return_value=True)
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner._module_available", return_value=True)
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     def test_handles_exception(self, mock_run, mock_available):
         mock_run.side_effect = FileNotFoundError("not found")
         findings = run_detect_secrets("/tmp/scan")
         self.assertEqual(findings, [])
 
-    @patch("flintai.scan.static_scanner._module_available", return_value=False)
-    @patch("flintai.scan.static_scanner.subprocess.run")
+    @patch("switch_trust.scan.static_scanner._module_available", return_value=False)
+    @patch("switch_trust.scan.static_scanner.subprocess.run")
     def test_skips_when_module_not_installed(self, mock_run, mock_available):
         findings = run_detect_secrets("/tmp/scan")
         self.assertEqual(findings, [])
@@ -226,7 +226,7 @@ class TestCheckUnpinnedDependencies(unittest.TestCase):
 
 class TestRunStaticScan(unittest.TestCase):
     def _files(self):
-        from flintai.schema import RepoFile
+        from switch_trust.schema import RepoFile
 
         return (
             RepoFile(path="test.py", content="x = 1\n", size=6),
@@ -250,9 +250,9 @@ class TestRunStaticScan(unittest.TestCase):
         self.assertIn("bandit", accounted)
         self.assertIn("detect-secrets", accounted)
 
-    @patch("flintai.scan.static_scanner._module_available", return_value=False)
+    @patch("switch_trust.scan.static_scanner._module_available", return_value=False)
     def test_missing_tools_are_declared(self, mock_available):
-        from flintai.schema import RepoFile
+        from switch_trust.schema import RepoFile
 
         py_file, _ = self._files()
         # Unpinned on purpose: the OSV fallback only queries `==`-pinned

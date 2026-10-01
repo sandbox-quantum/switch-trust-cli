@@ -1,6 +1,6 @@
 import unittest
 
-from flintai.eval.core.eval.evaluation import (
+from switch_trust.eval.core.eval.evaluation import (
     Evaluation,
     EvaluationResult,
     EvaluationStatus,

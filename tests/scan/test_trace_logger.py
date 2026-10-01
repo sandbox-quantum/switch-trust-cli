@@ -10,9 +10,14 @@ import os
 import tempfile
 import unittest
 
-from flintai.scan.trace_logger import CallContext, TraceLogger, estimate_tokens, now_iso
-from flintai.scan.trace_logger_file import FileTraceLogger
-from flintai.scan.trace_logger_log import LogTraceLogger
+from switch_trust.scan.trace_logger import (
+    CallContext,
+    TraceLogger,
+    estimate_tokens,
+    now_iso,
+)
+from switch_trust.scan.trace_logger_file import FileTraceLogger
+from switch_trust.scan.trace_logger_log import LogTraceLogger
 
 # ── Utilities ───────────────────────────────────────────────────────
 

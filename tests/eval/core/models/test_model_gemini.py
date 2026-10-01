@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 from google.genai import types as genai_types
 from pydantic import BaseModel
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model import ResponseStatus
-from flintai.eval.core.models.model_gemini import SAFETY_OFF, GeminiModel
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model import ResponseStatus
+from switch_trust.eval.core.models.model_gemini import SAFETY_OFF, GeminiModel
 
 
 class _Score(BaseModel):

@@ -2,14 +2,14 @@ import unittest
 from dataclasses import dataclass, field
 from unittest.mock import AsyncMock
 
-from flintai.eval.core.eval.evaluation import (
+from switch_trust.eval.core.eval.evaluation import (
     Evaluation,
     EvaluationResult,
     EvaluationStatus,
     EvaluationSummary,
 )
-from flintai.eval.core.eval.evaluation_multi import MultiEvaluation
-from flintai.eval.core.models.model import Model
+from switch_trust.eval.core.eval.evaluation_multi import MultiEvaluation
+from switch_trust.eval.core.models.model import Model
 
 
 @dataclass

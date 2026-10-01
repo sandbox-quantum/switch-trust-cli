@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from flintai.eval.common.schema import Content, Message, Part, Role
-from flintai.eval.core.models.model import ModelResponse
+from switch_trust.eval.common.schema import Content, Message, Part, Role
+from switch_trust.eval.core.models.model import ModelResponse
 
 
 def _make_response(text: str) -> ModelResponse:
@@ -16,7 +16,7 @@ def _make_response_no_message() -> ModelResponse:
 
 def _make_response_no_text_parts() -> ModelResponse:
     """Response with only non-text parts (e.g. tool calls)."""
-    from flintai.eval.common.schema import ToolCall
+    from switch_trust.eval.common.schema import ToolCall
 
     part = Part.tool_call_part(ToolCall(id="tc1", name="fn", arguments={}))
     content = Content(role=Role.ASSISTANT, parts=[part])
@@ -25,7 +25,7 @@ def _make_response_no_text_parts() -> ModelResponse:
 
 
 @patch(
-    "flintai.eval.core.detectors.detector_toxicity.require_transformers_pipeline"
+    "switch_trust.eval.core.detectors.detector_toxicity.require_transformers_pipeline"
 )
 class TestToxicityDetector(unittest.IsolatedAsyncioTestCase):
     async def test_toxic_label_returns_inverted_confidence(self, mock_require):
@@ -36,7 +36,7 @@ class TestToxicityDetector(unittest.IsolatedAsyncioTestCase):
         mock_pipeline.return_value = [{"label": "toxic", "score": 0.9}]
         mock_factory.return_value = mock_pipeline
 
-        from flintai.eval.core.detectors.detector_toxicity import (
+        from switch_trust.eval.core.detectors.detector_toxicity import (
             ToxicityDetector,
         )
 
@@ -51,7 +51,7 @@ class TestToxicityDetector(unittest.IsolatedAsyncioTestCase):
         mock_pipeline.return_value = [{"label": "neutral", "score": 0.95}]
         mock_factory.return_value = mock_pipeline
 
-        from flintai.eval.core.detectors.detector_toxicity import (
+        from switch_trust.eval.core.detectors.detector_toxicity import (
             ToxicityDetector,
         )
 
@@ -64,7 +64,7 @@ class TestToxicityDetector(unittest.IsolatedAsyncioTestCase):
         mock_pipeline = MagicMock()
         mock_require.return_value.return_value = mock_pipeline
 
-        from flintai.eval.core.detectors.detector_toxicity import (
+        from switch_trust.eval.core.detectors.detector_toxicity import (
             ToxicityDetector,
         )
 
@@ -78,7 +78,7 @@ class TestToxicityDetector(unittest.IsolatedAsyncioTestCase):
         mock_pipeline = MagicMock()
         mock_require.return_value.return_value = mock_pipeline
 
-        from flintai.eval.core.detectors.detector_toxicity import (
+        from switch_trust.eval.core.detectors.detector_toxicity import (
             ToxicityDetector,
         )
 
@@ -95,7 +95,7 @@ class TestToxicityDetector(unittest.IsolatedAsyncioTestCase):
         mock_pipeline.return_value = [{"label": "toxic", "score": 0.99}]
         mock_factory.return_value = mock_pipeline
 
-        from flintai.eval.core.detectors.detector_toxicity import (
+        from switch_trust.eval.core.detectors.detector_toxicity import (
             ToxicityDetector,
         )
 
@@ -105,7 +105,7 @@ class TestToxicityDetector(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(result.score, 0.01)
 
     async def test_custom_model_name(self, mock_require):
-        from flintai.eval.core.detectors.detector_toxicity import (
+        from switch_trust.eval.core.detectors.detector_toxicity import (
             ToxicityDetector,
         )
 
@@ -120,13 +120,13 @@ class TestToxicityDetector(unittest.IsolatedAsyncioTestCase):
 
 class TestExtractText(unittest.TestCase):
     def test_single_text_part(self):
-        from flintai.eval.core.detectors.detector_toxicity import _extract_text
+        from switch_trust.eval.core.detectors.detector_toxicity import _extract_text
 
         response = _make_response("hello")
         self.assertEqual(_extract_text(response), "hello")
 
     def test_multiple_text_parts(self):
-        from flintai.eval.core.detectors.detector_toxicity import _extract_text
+        from switch_trust.eval.core.detectors.detector_toxicity import _extract_text
 
         parts = [Part.text_part("hello"), Part.text_part("world")]
         content = Content(role=Role.ASSISTANT, parts=parts)
@@ -135,14 +135,14 @@ class TestExtractText(unittest.TestCase):
         self.assertEqual(_extract_text(response), "hello\nworld")
 
     def test_none_message(self):
-        from flintai.eval.core.detectors.detector_toxicity import _extract_text
+        from switch_trust.eval.core.detectors.detector_toxicity import _extract_text
 
         response = _make_response_no_message()
         self.assertEqual(_extract_text(response), "")
 
     def test_mixed_parts_only_text_extracted(self):
-        from flintai.eval.common.schema import ToolCall
-        from flintai.eval.core.detectors.detector_toxicity import _extract_text
+        from switch_trust.eval.common.schema import ToolCall
+        from switch_trust.eval.core.detectors.detector_toxicity import _extract_text
 
         parts = [
             Part.text_part("hello"),

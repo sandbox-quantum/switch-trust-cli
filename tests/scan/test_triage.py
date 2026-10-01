@@ -6,7 +6,7 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from flintai.scan.triage import build_agent_context, run_triage
+from switch_trust.scan.triage import build_agent_context, run_triage
 
 
 class TestBuildAgentContext(unittest.TestCase):
@@ -70,9 +70,9 @@ class TestRunTriage(unittest.TestCase):
         result = run_triage([], {})
         self.assertIsNone(result)
 
-    @patch("flintai.scan.triage.complete_text")
+    @patch("switch_trust.scan.triage.complete_text")
     @patch(
-        "flintai.scan.triage._load_triage_prompt",
+        "switch_trust.scan.triage._load_triage_prompt",
         return_value="You are a triage agent.",
     )
     def test_successful_triage(self, mock_prompt, mock_complete):
@@ -117,8 +117,8 @@ class TestRunTriage(unittest.TestCase):
         self.assertEqual(result["kept_findings"][0]["id"], "F1")
         self.assertEqual(len(result["triage_dismissed"]), 1)
 
-    @patch("flintai.scan.triage.complete_text", return_value="not valid json {{")
-    @patch("flintai.scan.triage._load_triage_prompt", return_value="prompt")
+    @patch("switch_trust.scan.triage.complete_text", return_value="not valid json {{")
+    @patch("switch_trust.scan.triage._load_triage_prompt", return_value="prompt")
     def test_json_parse_error_returns_identity(self, mock_prompt, mock_complete):
         findings = [{"id": "F1", "ai_spm_severity": "High", "subcategory": "test"}]
         result = run_triage(findings, {}, model=MagicMock())
@@ -126,15 +126,15 @@ class TestRunTriage(unittest.TestCase):
         self.assertEqual(len(result["kept_findings"]), 1)
         self.assertTrue(result["triage_summary"]["parse_error"])
 
-    @patch("flintai.scan.triage.complete_text", return_value=None)
-    @patch("flintai.scan.triage._load_triage_prompt", return_value="prompt")
+    @patch("switch_trust.scan.triage.complete_text", return_value=None)
+    @patch("switch_trust.scan.triage._load_triage_prompt", return_value="prompt")
     def test_provider_returns_none(self, mock_prompt, mock_complete):
         findings = [{"id": "F1", "ai_spm_severity": "High", "subcategory": "test"}]
         result = run_triage(findings, {}, model=MagicMock())
         self.assertIsNone(result)
 
-    @patch("flintai.scan.triage.complete_text")
-    @patch("flintai.scan.triage._load_triage_prompt", return_value="prompt")
+    @patch("switch_trust.scan.triage.complete_text")
+    @patch("switch_trust.scan.triage._load_triage_prompt", return_value="prompt")
     def test_strips_code_fences(self, mock_prompt, mock_complete):
         inner = json.dumps(
             {
@@ -157,8 +157,8 @@ class TestRunTriage(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(len(result["kept_findings"]), 1)
 
-    @patch("flintai.scan.triage.complete_text")
-    @patch("flintai.scan.triage._load_triage_prompt", return_value="prompt")
+    @patch("switch_trust.scan.triage.complete_text")
+    @patch("switch_trust.scan.triage._load_triage_prompt", return_value="prompt")
     def test_unaccounted_findings_readded(self, mock_prompt, mock_complete):
         mock_complete.return_value = json.dumps(
             {
@@ -178,8 +178,8 @@ class TestRunTriage(unittest.TestCase):
         kept_ids = {f["id"] for f in result["kept_findings"]}
         self.assertIn("F2", kept_ids)
 
-    @patch("flintai.scan.triage.complete_text")
-    @patch("flintai.scan.triage._load_triage_prompt", return_value="prompt")
+    @patch("switch_trust.scan.triage.complete_text")
+    @patch("switch_trust.scan.triage._load_triage_prompt", return_value="prompt")
     def test_cve_dedup_and_expansion(self, mock_prompt, mock_complete):
         mock_complete.return_value = json.dumps(
             {
@@ -212,7 +212,7 @@ class TestRunTriage(unittest.TestCase):
         self.assertIn("CVE1", kept_ids)
         self.assertIn("CVE2", kept_ids)
 
-    @patch("flintai.scan.triage._load_triage_prompt")
+    @patch("switch_trust.scan.triage._load_triage_prompt")
     def test_prompt_not_found_returns_none(self, mock_prompt):
         mock_prompt.side_effect = FileNotFoundError("not found")
 
@@ -220,8 +220,8 @@ class TestRunTriage(unittest.TestCase):
         result = run_triage(findings, {}, model=MagicMock())
         self.assertIsNone(result)
 
-    @patch("flintai.scan.triage.complete_text")
-    @patch("flintai.scan.triage._load_triage_prompt", return_value="prompt")
+    @patch("switch_trust.scan.triage.complete_text")
+    @patch("switch_trust.scan.triage._load_triage_prompt", return_value="prompt")
     def test_missing_keys_backward_compat(self, mock_prompt, mock_complete):
         mock_complete.return_value = json.dumps(
             {

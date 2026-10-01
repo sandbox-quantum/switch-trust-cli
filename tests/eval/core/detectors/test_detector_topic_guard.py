@@ -1,10 +1,10 @@
 import unittest
 from unittest.mock import AsyncMock
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.detectors.detector import DetectorResult
-from flintai.eval.core.detectors.detector_topic_guard import TopicGuardDetector
-from flintai.eval.core.models.model import ModelResponse
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.detectors.detector import DetectorResult
+from switch_trust.eval.core.detectors.detector_topic_guard import TopicGuardDetector
+from switch_trust.eval.core.models.model import ModelResponse
 
 
 def _make_response(text: str) -> ModelResponse:

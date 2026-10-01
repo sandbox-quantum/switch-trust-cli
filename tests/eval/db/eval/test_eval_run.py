@@ -1,15 +1,15 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from flintai.eval.core.eval.evaluation import (
+from switch_trust.eval.core.eval.evaluation import (
     Evaluation,
     EvaluationResult,
     EvaluationStatus,
     EvaluationSummary,
 )
-from flintai.eval.db.base.eval.eval_run import run_model_evaluation
-from flintai.eval.db.base.eval.model_eval_run_types import DbModelEvaluationRun
-from flintai.eval.db.base.eval.model_eval_types import DbModelEvaluation
+from switch_trust.eval.db.base.eval.eval_run import run_model_evaluation
+from switch_trust.eval.db.base.eval.model_eval_run_types import DbModelEvaluationRun
+from switch_trust.eval.db.base.eval.model_eval_types import DbModelEvaluation
 
 
 def _make_model_evaluation(

@@ -8,19 +8,19 @@ ToxicityMetricEvaluation.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from flintai.eval.core.detectors.detector_model import ModelDetector
-from flintai.eval.core.eval.evaluation_single_prompt import (
+from switch_trust.eval.core.detectors.detector_model import ModelDetector
+from switch_trust.eval.core.eval.evaluation_single_prompt import (
     SinglePromptEvaluation,
 )
-from flintai.eval.core.eval.metric_conciseness import ConcisenessMetricEvaluation
-from flintai.eval.core.eval.metric_factual_accuracy import (
+from switch_trust.eval.core.eval.metric_conciseness import ConcisenessMetricEvaluation
+from switch_trust.eval.core.eval.metric_factual_accuracy import (
     FactualAccuracyMetricEvaluation,
 )
-from flintai.eval.core.eval.metric_instruction_adherence import (
+from switch_trust.eval.core.eval.metric_instruction_adherence import (
     InstructionAdherenceMetricEvaluation,
 )
-from flintai.eval.core.eval.metric_tone import ToneMetricEvaluation
-from flintai.eval.core.eval.metric_toxicity import ToxicityMetricEvaluation
+from switch_trust.eval.core.eval.metric_tone import ToneMetricEvaluation
+from switch_trust.eval.core.eval.metric_toxicity import ToxicityMetricEvaluation
 
 
 class TestConcisenessMetricEvaluation(
@@ -167,14 +167,14 @@ class TestToxicityMetricEvaluation(
     unittest.IsolatedAsyncioTestCase,
 ):
     @patch(
-        "flintai.eval.core.eval.metric_toxicity.ToxicityDetector",
+        "switch_trust.eval.core.eval.metric_toxicity.ToxicityDetector",
     )
     def test_init_creates_instance(self, mock_cls):
         e = ToxicityMetricEvaluation()
         self.assertIsInstance(e, ToxicityMetricEvaluation)
 
     @patch(
-        "flintai.eval.core.eval.metric_toxicity.ToxicityDetector",
+        "switch_trust.eval.core.eval.metric_toxicity.ToxicityDetector",
     )
     async def test_get_children_returns_correct_count(
         self,
@@ -185,7 +185,7 @@ class TestToxicityMetricEvaluation(
         self.assertEqual(len(children), 100)
 
     @patch(
-        "flintai.eval.core.eval.metric_toxicity.ToxicityDetector",
+        "switch_trust.eval.core.eval.metric_toxicity.ToxicityDetector",
     )
     async def test_children_are_single_prompt_evaluations(
         self,
@@ -197,7 +197,7 @@ class TestToxicityMetricEvaluation(
             self.assertIsInstance(child, SinglePromptEvaluation)
 
     @patch(
-        "flintai.eval.core.eval.metric_toxicity.ToxicityDetector",
+        "switch_trust.eval.core.eval.metric_toxicity.ToxicityDetector",
     )
     async def test_children_use_toxicity_detector(
         self,
@@ -210,7 +210,7 @@ class TestToxicityMetricEvaluation(
             self.assertIs(child.detector, mock_instance)
 
     @patch(
-        "flintai.eval.core.eval.metric_toxicity.ToxicityDetector",
+        "switch_trust.eval.core.eval.metric_toxicity.ToxicityDetector",
     )
     async def test_children_share_single_detector(
         self,

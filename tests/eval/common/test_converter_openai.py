@@ -7,8 +7,8 @@ from openai.types.chat.chat_completion_message_tool_call import (
     Function,
 )
 
-from flintai.eval.common import converter_openai as openai_converter
-from flintai.eval.common.schema import (
+from switch_trust.eval.common import converter_openai as openai_converter
+from switch_trust.eval.common.schema import (
     Content,
     Part,
     PartType,
@@ -233,7 +233,7 @@ class TestOpenAIConverter(unittest.TestCase):
     # -- from_message_obj ---------------------------------------------------
 
     def test_from_message_obj(self):
-        from flintai.eval.common.schema import Message
+        from switch_trust.eval.common.schema import Message
 
         msg = Message(content=Content.text(Role.USER, "hello"))
         result = openai_converter.from_message_obj(msg)

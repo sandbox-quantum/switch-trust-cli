@@ -212,7 +212,7 @@ __marimo__/
 results*.json
 eval*.json
 scan*.json
-flintai*.log
+switch_trust*.log
 .claude/
 
 # Release audit artifacts

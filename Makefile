@@ -12,8 +12,12 @@ release-audit: lock-deps license-check sbom vuln-scan
 #   replicate  — Apache License 2.0
 #   tiktoken   — MIT License
 #   zalgolib   — MIT License
-#   flintai-cli   — Apache License 2.0 (this project, license not yet in metadata)
-IGNORE_PACKAGES := --ignore-packages replicate tiktoken zalgolib flintai-cli
+#   fqdn       — MPL 2.0
+#                (uses identifier "MPL-2.0" instead of "MPL 2.0" since
+#                 https://github.com/ypcrts/fqdn/commit/
+#                 9782faa6889f9797831d14454cc77830b7dea17f)
+#   switch-trust-cli   — Apache License 2.0 (this project, license not yet in metadata)
+IGNORE_PACKAGES := --ignore-packages replicate tiktoken zalgolib fqdn switch-trust-cli
 
 license-check:
 	@echo "=== License review ==="
@@ -46,6 +50,7 @@ Apache-2.0 OR MIT;\
 Apache 2.0 License;\
 Apache License;\
 Apache;\
+0BSD; \
 BSD License;\
 BSD-2-Clause;\
 BSD-3-Clause;\

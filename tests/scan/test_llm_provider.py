@@ -6,8 +6,8 @@ import os
 import unittest
 from unittest.mock import patch
 
-from flintai.scan import ADKModel
-from flintai.scan.llm_provider import (
+from switch_trust.scan import ADKModel
+from switch_trust.scan.llm_provider import (
     DEFAULT_MODEL,
     PROVIDER_GOOGLE,
     _resolve_model_string,

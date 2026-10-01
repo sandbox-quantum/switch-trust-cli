@@ -1,15 +1,15 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model import ResponseStatus
-from flintai.eval.core.models.model_langserve import LangServeModel
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model import ResponseStatus
+from switch_trust.eval.core.models.model_langserve import LangServeModel
 
 
 def _make_aiohttp_mocks(json_data: dict):
     """Create mock aiohttp session and response for a single POST call."""
     mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
+    mock_response.status = 200
     mock_response.json = AsyncMock(return_value=json_data)
     mock_response.__aenter__ = AsyncMock(return_value=mock_response)
     mock_response.__aexit__ = AsyncMock(return_value=False)
@@ -23,7 +23,7 @@ def _make_aiohttp_mocks(json_data: dict):
 
 
 class TestLangServeModel(unittest.IsolatedAsyncioTestCase):
-    @patch("flintai.eval.core.models.model_langserve.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_langserve.aiohttp.ClientSession")
     async def test_generate_text(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "Hello!"})
         mock_session_cls.return_value = mock_session
@@ -43,7 +43,7 @@ class TestLangServeModel(unittest.IsolatedAsyncioTestCase):
             "Hello!",
         )
 
-    @patch("flintai.eval.core.models.model_langserve.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_langserve.aiohttp.ClientSession")
     async def test_url_composition_with_chain(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "ok"})
         mock_session_cls.return_value = mock_session
@@ -63,7 +63,7 @@ class TestLangServeModel(unittest.IsolatedAsyncioTestCase):
             "http://localhost:8000/joke/invoke",
         )
 
-    @patch("flintai.eval.core.models.model_langserve.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_langserve.aiohttp.ClientSession")
     async def test_url_composition_no_chain(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "ok"})
         mock_session_cls.return_value = mock_session
@@ -82,7 +82,7 @@ class TestLangServeModel(unittest.IsolatedAsyncioTestCase):
             "http://localhost:8000/invoke",
         )
 
-    @patch("flintai.eval.core.models.model_langserve.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_langserve.aiohttp.ClientSession")
     async def test_empty_output(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": ""})
         mock_session_cls.return_value = mock_session
@@ -101,7 +101,7 @@ class TestLangServeModel(unittest.IsolatedAsyncioTestCase):
             ResponseStatus.EMPTY_RESPONSE,
         )
 
-    @patch("flintai.eval.core.models.model_langserve.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_langserve.aiohttp.ClientSession")
     async def test_dict_output_extracts_content(
         self,
         mock_session_cls,
@@ -126,7 +126,7 @@ class TestLangServeModel(unittest.IsolatedAsyncioTestCase):
             "The answer is 42",
         )
 
-    @patch("flintai.eval.core.models.model_langserve.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_langserve.aiohttp.ClientSession")
     async def test_custom_headers(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "ok"})
         mock_session_cls.return_value = mock_session
@@ -146,7 +146,7 @@ class TestLangServeModel(unittest.IsolatedAsyncioTestCase):
             "Bearer tok123",
         )
 
-    @patch("flintai.eval.core.models.model_langserve.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_langserve.aiohttp.ClientSession")
     async def test_sends_input_format(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "ok"})
         mock_session_cls.return_value = mock_session

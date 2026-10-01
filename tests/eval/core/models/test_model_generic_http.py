@@ -1,9 +1,9 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model import ResponseStatus
-from flintai.eval.core.models.model_generic_http import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model import ResponseStatus
+from switch_trust.eval.core.models.model_generic_http import (
     GenericHttpModel,
     _resolve_path,
 )
@@ -12,7 +12,7 @@ from flintai.eval.core.models.model_generic_http import (
 def _make_aiohttp_mocks(json_data: dict):
     """Create mock aiohttp session and response for a single POST call."""
     mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
+    mock_response.status = 200
     mock_response.json = AsyncMock(return_value=json_data)
     mock_response.__aenter__ = AsyncMock(return_value=mock_response)
     mock_response.__aexit__ = AsyncMock(return_value=False)
@@ -58,7 +58,7 @@ class TestResolvePath(unittest.TestCase):
 
 
 class TestGenericHttpModel(unittest.IsolatedAsyncioTestCase):
-    @patch("flintai.eval.core.models.model_generic_http.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_generic_http.aiohttp.ClientSession")
     async def test_generate_text(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "Hello!"})
         mock_session_cls.return_value = mock_session
@@ -77,7 +77,7 @@ class TestGenericHttpModel(unittest.IsolatedAsyncioTestCase):
             "Hello!",
         )
 
-    @patch("flintai.eval.core.models.model_generic_http.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_generic_http.aiohttp.ClientSession")
     async def test_custom_field_names(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"answer": "42"})
         mock_session_cls.return_value = mock_session
@@ -100,7 +100,7 @@ class TestGenericHttpModel(unittest.IsolatedAsyncioTestCase):
         payload = call_kwargs.kwargs["json"]
         self.assertIn("question", payload)
 
-    @patch("flintai.eval.core.models.model_generic_http.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_generic_http.aiohttp.ClientSession")
     async def test_nested_output_path(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks(
             {
@@ -123,7 +123,7 @@ class TestGenericHttpModel(unittest.IsolatedAsyncioTestCase):
             "deep",
         )
 
-    @patch("flintai.eval.core.models.model_generic_http.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_generic_http.aiohttp.ClientSession")
     async def test_empty_output(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": ""})
         mock_session_cls.return_value = mock_session
@@ -142,7 +142,7 @@ class TestGenericHttpModel(unittest.IsolatedAsyncioTestCase):
             ResponseStatus.EMPTY_RESPONSE,
         )
 
-    @patch("flintai.eval.core.models.model_generic_http.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_generic_http.aiohttp.ClientSession")
     async def test_custom_headers(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "ok"})
         mock_session_cls.return_value = mock_session
@@ -162,7 +162,7 @@ class TestGenericHttpModel(unittest.IsolatedAsyncioTestCase):
             "secret123",
         )
 
-    @patch("flintai.eval.core.models.model_generic_http.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_generic_http.aiohttp.ClientSession")
     async def test_multi_message_flattened(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "ok"})
         mock_session_cls.return_value = mock_session

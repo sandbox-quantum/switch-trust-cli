@@ -2,15 +2,15 @@ import json
 import unittest
 from unittest.mock import AsyncMock
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.detectors.detector import DetectorResult
-from flintai.eval.core.eval.evaluation import EvaluationStatus
-from flintai.eval.core.eval.evaluation_adversarial import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.detectors.detector import DetectorResult
+from switch_trust.eval.core.eval.evaluation import EvaluationStatus
+from switch_trust.eval.core.eval.evaluation_adversarial import (
     AdversarialEvaluation,
     AdversarialTurnEvaluation,
     _parse_attacker_response,
 )
-from flintai.eval.core.models.model import ModelResponse, ResponseStatus
+from switch_trust.eval.core.models.model import ModelResponse, ResponseStatus
 
 
 def _make_response(

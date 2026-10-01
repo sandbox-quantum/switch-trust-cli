@@ -7,8 +7,8 @@ import unittest
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
-from flintai.scan.schema import AgentProfile
-from flintai.scan.tool_dispatcher import ToolDispatcher, _truncate
+from switch_trust.scan.schema import AgentProfile
+from switch_trust.scan.tool_dispatcher import ToolDispatcher, _truncate
 
 
 @dataclass
@@ -319,7 +319,7 @@ class TestRunTargetedBandit(unittest.TestCase):
         result = d.get_findings(file_path="data.txt", mode="fresh")
         self.assertIn("ERROR", result)
 
-    @patch("flintai.scan.tool_dispatcher.subprocess.run")
+    @patch("switch_trust.scan.tool_dispatcher.subprocess.run")
     def test_bandit_success(self, mock_run):
         mock_run.return_value = MagicMock(
             stdout=json.dumps(
@@ -341,21 +341,21 @@ class TestRunTargetedBandit(unittest.TestCase):
         result = d.get_findings(file_path="agent.py", mode="fresh")
         self.assertIn("B102", result)
 
-    @patch("flintai.scan.tool_dispatcher.subprocess.run")
+    @patch("switch_trust.scan.tool_dispatcher.subprocess.run")
     def test_bandit_no_issues(self, mock_run):
         mock_run.return_value = MagicMock(stdout="", returncode=0)
         d = _make_dispatcher(files={"safe.py": "x = 1\n"})
         result = d.get_findings(file_path="safe.py", mode="fresh")
         self.assertIn("no issues", result)
 
-    @patch("flintai.scan.tool_dispatcher.subprocess.run")
+    @patch("switch_trust.scan.tool_dispatcher.subprocess.run")
     def test_bandit_not_installed(self, mock_run):
         mock_run.side_effect = FileNotFoundError("bandit not found")
         d = _make_dispatcher(files={"a.py": "x = 1\n"})
         result = d.get_findings(file_path="a.py", mode="fresh")
         self.assertIn("ERROR", result)
 
-    @patch("flintai.scan.tool_dispatcher.subprocess.run")
+    @patch("switch_trust.scan.tool_dispatcher.subprocess.run")
     def test_bandit_timeout(self, mock_run):
         import subprocess
 
@@ -384,7 +384,7 @@ class TestGetAdkTools(unittest.TestCase):
         self.assertEqual(len(tools), 5)
 
     def test_returns_wrapped_tools_with_tracer(self):
-        from flintai.scan.trace_logger_log import LogTraceLogger
+        from switch_trust.scan.trace_logger_log import LogTraceLogger
 
         d = _make_dispatcher()
         tracer = LogTraceLogger()

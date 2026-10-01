@@ -5,8 +5,8 @@ from openai.types.chat import ChatCompletionMessage
 from openai.types.chat.chat_completion import ChatCompletion, Choice
 from pydantic import BaseModel
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model_openai import OpenAIModel
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model_openai import OpenAIModel
 
 
 class _Score(BaseModel):

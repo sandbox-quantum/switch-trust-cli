@@ -2,8 +2,8 @@ import unittest
 
 from google.genai import types as genai_types
 
-from flintai.eval.common import converter_genai as genai_converter
-from flintai.eval.common.schema import (
+from switch_trust.eval.common import converter_genai as genai_converter
+from switch_trust.eval.common.schema import (
     Content,
     Part,
     PartType,
@@ -204,7 +204,7 @@ class TestGenAIConverter(unittest.TestCase):
     # -- from_message_obj -----------------------------------------------------
 
     def test_from_message_obj(self):
-        from flintai.eval.common.schema import Message
+        from switch_trust.eval.common.schema import Message
 
         msg = Message(content=Content.text(Role.USER, "hi"))
         obj = genai_converter.from_message_obj(msg)

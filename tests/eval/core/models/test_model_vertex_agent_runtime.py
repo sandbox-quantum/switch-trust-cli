@@ -4,9 +4,9 @@ import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model import ResponseStatus
-from flintai.eval.core.models.model_vertex_agent_runtime import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model import ResponseStatus
+from switch_trust.eval.core.models.model_vertex_agent_runtime import (
     VertexAgentRuntimeModel,
     _extract_final,
     _extract_first,
@@ -38,7 +38,7 @@ def _tool_call_event(name: str) -> dict:
 def _make_aiohttp_mocks(body: str):
     """Create mock aiohttp session and response for a single POST call."""
     mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
+    mock_response.status = 200
     mock_response.text = AsyncMock(return_value=body)
     mock_response.__aenter__ = AsyncMock(return_value=mock_response)
     mock_response.__aexit__ = AsyncMock(return_value=False)
@@ -121,7 +121,7 @@ class TestServiceAccountCredentials(unittest.TestCase):
 
 class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_request_body_shape(self, mock_session_cls):
         mock_session_cls.return_value = _make_aiohttp_mocks(json.dumps(_event("hi")))
@@ -140,7 +140,7 @@ class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("session_id", payload["input"])
 
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_streamed_events_return_final_text(self, mock_session_cls):
         body = "\n".join(
@@ -155,7 +155,7 @@ class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp.message.content.parts[0].text, "done")
 
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_immediate_result_returns_first_text(self, mock_session_cls):
         body = "\n".join(json.dumps(e) for e in (_event("first"), _event("last")))
@@ -167,7 +167,7 @@ class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp.message.content.parts[0].text, "first")
 
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_no_text_yields_empty_response(self, mock_session_cls):
         mock_session_cls.return_value = _make_aiohttp_mocks(
@@ -181,7 +181,7 @@ class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp.status, ResponseStatus.EMPTY_RESPONSE)
 
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_raw_access_token_sent_as_bearer(self, mock_session_cls):
         mock_session_cls.return_value = _make_aiohttp_mocks(json.dumps(_event("hi")))
@@ -193,7 +193,7 @@ class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers["Authorization"], "Bearer ya29.token")
 
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_service_account_token_is_refreshed(self, mock_session_cls):
         mock_session_cls.return_value = _make_aiohttp_mocks(json.dumps(_event("hi")))
@@ -215,7 +215,7 @@ class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers["Authorization"], "Bearer minted-token")
 
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_valid_token_is_not_refreshed(self, mock_session_cls):
         mock_session_cls.return_value = _make_aiohttp_mocks(json.dumps(_event("hi")))
@@ -233,7 +233,7 @@ class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers["Authorization"], "Bearer cached-token")
 
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_concurrent_prompts_refresh_once(self, mock_session_cls):
         # An expiring token makes every in-flight prompt see valid == False at
@@ -266,7 +266,7 @@ class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
         credentials.refresh.assert_called_once()
 
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_custom_class_method(self, mock_session_cls):
         mock_session_cls.return_value = _make_aiohttp_mocks(json.dumps(_event("hi")))
@@ -281,7 +281,7 @@ class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["class_method"], "streaming_agent_run_with_events")
 
     @patch(
-        "flintai.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
+        "switch_trust.eval.core.models.model_vertex_agent_runtime.aiohttp.ClientSession"
     )
     async def test_multi_message_flattened(self, mock_session_cls):
         mock_session_cls.return_value = _make_aiohttp_mocks(json.dumps(_event("ok")))

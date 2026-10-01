@@ -2,18 +2,18 @@ import json
 import unittest
 from unittest.mock import AsyncMock
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.eval.eval_creator import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.eval.eval_creator import (
     CreationContext,
     EvaluationPlan,
     _build_user_message,
     _parse_response,
     create_evaluation,
 )
-from flintai.eval.core.message.message_collection_memory import (
+from switch_trust.eval.core.message.message_collection_memory import (
     InMemoryMessageCollection,
 )
-from flintai.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model import ModelResponse
 
 
 def _mock_model_with_response(text: str) -> AsyncMock:

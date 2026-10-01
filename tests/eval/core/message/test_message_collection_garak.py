@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from flintai.eval.core.message.message_collection_garak import (
+from switch_trust.eval.core.message.message_collection_garak import (
     GarakMessageCollection,
 )
 

@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from flintai.cli.main import _load_environment, _print_error
+from switch_trust.cli.main import _load_environment, _print_error
 
 
 class TestPrintError:
@@ -30,7 +30,7 @@ class TestLoadEnvironment:
 
     The local `.env` in the cwd is discovered and wins over the global config,
     but neither dotfile clobbers a variable already present in `os.environ`
-    (e.g. one supplied on the command line as `FOO=bar flintai ...`).
+    (e.g. one supplied on the command line as `FOO=bar switch-trust ...`).
 
     The `.env` discovery is anchored at the cwd (`find_dotenv(usecwd=True)`),
     not at this module's directory — a bare `load_dotenv()` searches from the
@@ -38,7 +38,7 @@ class TestLoadEnvironment:
     would never be found. Each test chdirs into a `project` dir to stand in for
     the user's working directory.
 
-    The global config dir is resolved via `get_flintai_dir()`, so it is
+    The global config dir is resolved via `get_switch_trust_dir()`, so it is
     monkeypatched (via the `global_dir` fixture) to a temp dir separate from the
     cwd — otherwise the two `.env` files would collapse onto the same path and
     the override behavior couldn't be observed.
@@ -54,10 +54,10 @@ class TestLoadEnvironment:
 
     @pytest.fixture
     def global_dir(self, tmp_path, monkeypatch):
-        """A temp stand-in for ``~/.flintai``; its ``.env`` is the global file."""
+        """A temp stand-in for ``~/.switch-trust``; its ``.env`` is the global file."""
         d = tmp_path / "global"
         d.mkdir()
-        monkeypatch.setattr("flintai.cli.main.get_flintai_dir", lambda: d)
+        monkeypatch.setattr("switch_trust.cli.main.get_switch_trust_dir", lambda: d)
         return d
 
     @pytest.fixture
@@ -167,14 +167,14 @@ class TestLoadEnvironment:
 
 
 class TestMainErrorHandling:
-    @patch("flintai.cli.main._dispatch", side_effect=RuntimeError("test crash"))
-    @patch("flintai.cli.main.setup_file_logging")
-    @patch("flintai.cli.main._print_logo")
-    @patch("flintai.cli.main._load_environment")
-    @patch("flintai.cli.main.get_telemetry_consent", return_value=False)
-    @patch("flintai.cli.main.ensure_telemetry_consent")
-    @patch("flintai.cli.main.ensure_client_id")
-    @patch("flintai.cli.main.init_cli")
+    @patch("switch_trust.cli.main._dispatch", side_effect=RuntimeError("test crash"))
+    @patch("switch_trust.cli.main.setup_file_logging")
+    @patch("switch_trust.cli.main._print_logo")
+    @patch("switch_trust.cli.main._load_environment")
+    @patch("switch_trust.cli.main.get_telemetry_consent", return_value=False)
+    @patch("switch_trust.cli.main.ensure_telemetry_consent")
+    @patch("switch_trust.cli.main.ensure_client_id")
+    @patch("switch_trust.cli.main.init_cli")
     def test_exception_prints_error_and_exits(
         self,
         mock_init_cli,
@@ -188,9 +188,9 @@ class TestMainErrorHandling:
         capsys,
         tmp_path,
     ):
-        mock_init_cli.get_flintai_env_path.return_value = tmp_path / "nonexistent"
+        mock_init_cli.get_switch_trust_env_path.return_value = tmp_path / "nonexistent"
 
-        from flintai.cli.main import main
+        from switch_trust.cli.main import main
 
         with pytest.raises(SystemExit) as exc_info:
             main(["eval", "models", "list"])

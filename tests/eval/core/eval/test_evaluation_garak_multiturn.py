@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from garak.attempt import Attempt, Conversation, Turn
 from garak.attempt import Message as GarakMessage
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.eval.evaluation import EvaluationStatus
-from flintai.eval.core.eval.evaluation_garak_probe import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.eval.evaluation import EvaluationStatus
+from switch_trust.eval.core.eval.evaluation_garak_probe import (
     GarakMultiTurnEvaluation,
     _get_generator_adapter_cls,
 )
-from flintai.eval.core.models.model import ModelResponse, ResponseStatus
+from switch_trust.eval.core.models.model import ModelResponse, ResponseStatus
 
 
 class TestGarakGeneratorAdapter(unittest.TestCase):

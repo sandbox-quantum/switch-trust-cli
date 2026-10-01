@@ -1,14 +1,14 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from flintai.eval.common.schema import Content, Message, Part, Role
-from flintai.eval.core.detectors import detector_garak
-from flintai.eval.core.detectors.detector_garak import (
+from switch_trust.eval.common.schema import Content, Message, Part, Role
+from switch_trust.eval.core.detectors import detector_garak
+from switch_trust.eval.core.detectors.detector_garak import (
     GarakDetector,
     _create_conversation,
     _extract_text,
 )
-from flintai.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model import ModelResponse
 
 
 def _make_response(text: str) -> ModelResponse:

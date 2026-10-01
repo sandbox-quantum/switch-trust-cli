@@ -3,12 +3,12 @@ import time
 import unittest
 from unittest.mock import MagicMock
 
-from flintai.eval.core.eval.evaluation import (
+from switch_trust.eval.core.eval.evaluation import (
     Evaluation,
     EvaluationStatus,
     EvaluationSummary,
 )
-from flintai.eval.core.eval.observer import (
+from switch_trust.eval.core.eval.observer import (
     ConsoleObserver,
     ConsolePollingObserver,
     PollingObserver,
