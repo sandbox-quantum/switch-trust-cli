@@ -1,9 +1,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust/main/images/terminal-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust/main/images/terminal-light.svg">
-  <img src="https://raw.githubusercontent.com/sandbox-quantum/switch-trust/main/images/terminal-light.svg" alt="Switch Trust" width="350">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/switch-trust-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/switch-trust-light.png">
+  <img src="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/switch-trust-light.png" alt="Switch Trust" width="450">
 </picture>
 
 [![PyPI version](https://img.shields.io/pypi/v/switch-trust-cli?color=A1C9D2&logo=pypi&logoColor=white)](https://pypi.org/project/switch-trust-cli/) [![Python](https://img.shields.io/badge/python-3.11+-A1C9D2?logo=python&logoColor=white)](https://www.python.org/downloads/) [![Documentation](https://img.shields.io/badge/docs-docs.switchagents.ai-FF895E)](https://docs.switchagents.ai) [![Website](https://img.shields.io/badge/website-switchagents.ai-FF895E)](https://switchagents.ai)
