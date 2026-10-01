@@ -1,26 +1,29 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sandbox-quantum/flintai-cli/main/images/flint-ai-wordmark-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/sandbox-quantum/flintai-cli/main/images/flint-ai-wordmark.svg">
-  <img src="https://raw.githubusercontent.com/sandbox-quantum/flintai-cli/main/images/flint-ai-wordmark.svg" alt="Flint AI" width="350">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust/main/images/terminal-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust/main/images/terminal-light.svg">
+  <img src="https://raw.githubusercontent.com/sandbox-quantum/switch-trust/main/images/terminal-light.svg" alt="Switch Trust" width="350">
 </picture>
 
-[![PyPI version](https://img.shields.io/pypi/v/flintai-cli?color=A1C9D2&logo=pypi&logoColor=white)](https://pypi.org/project/flintai-cli/) [![Python](https://img.shields.io/badge/python-3.11+-A1C9D2?logo=python&logoColor=white)](https://www.python.org/downloads/) [![Documentation](https://img.shields.io/badge/docs-docs.flintai.dev-FF895E)](https://docs.flintai.dev) [![Website](https://img.shields.io/badge/website-flintai.dev-FF895E)](https://flintai.dev)
+[![PyPI version](https://img.shields.io/pypi/v/switch-trust-cli?color=A1C9D2&logo=pypi&logoColor=white)](https://pypi.org/project/switch-trust-cli/) [![Python](https://img.shields.io/badge/python-3.11+-A1C9D2?logo=python&logoColor=white)](https://www.python.org/downloads/) [![Documentation](https://img.shields.io/badge/docs-docs.switchagents.ai-FF895E)](https://docs.switchagents.ai) [![Website](https://img.shields.io/badge/website-switchagents.ai-FF895E)](https://switchagents.ai)
 
 </div>
 
 **Ship AI agents with confidence**
 
+> [!IMPORTANT]
+> **Flint AI is now Switch Trust.**
+
 One CLI to analyze agent code and runtime behavior, any framework.
 
-| | **Flint AI Scan** | **Flint AI Eval** |
+| | **Switch Trust Scan** | **Switch Trust Eval** |
 |---|---|---|
-| **Command** | `flintai scan` | `flintai eval` |
+| **Command** | `switch-trust scan` | `switch-trust eval` |
 | **What** | AI-powered security analysis of your agent's code (whitebox testing) | Runtime behavioral evaluation with adversarial prompts (blackbox testing) |
 | **Output** | Security findings mapped to OWASP top 10 with CVSS severity scores  | Evaluation scores (0-100%) mapped to OWASP top 10  |
 
-**Why Flint AI?**
+**Why Switch Trust?**
 - **AI-powered analysis** — Contextual code understanding, not just pattern matching
 - **OWASP ASI mapped** — Findings aligned to Top 10 for Agentic Applications
 - **100% free** — First results in minutes
@@ -30,12 +33,12 @@ One CLI to analyze agent code and runtime behavior, any framework.
 
 > **Requirements**
 > - Python 3.11 or later
-> - [OpenGrep](https://github.com/opengrep/opengrep#linux--macos) (required for Flint AI Scan)
-> - A running agent accessible via HTTP (required for Flint AI Eval)
+> - [OpenGrep](https://github.com/opengrep/opengrep#linux--macos) (required for Switch Trust Scan)
+> - A running agent accessible via HTTP (required for Switch Trust Eval)
 >
 > **Supported frameworks:** Google ADK, Google GenAI, Anthropic, OpenAI, OpenAI Agents SDK, LangGraph, CrewAI, AutoGen, HuggingFace Transformers, HuggingFace smolagents
 
-### Step 1: Install Flint AI
+### Step 1: Install Switch Trust
 
 Using a virtual environment is recommended to avoid dependency conflicts:
 ```bash
@@ -43,9 +46,9 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Install Flint AI CLI:
+Install Switch Trust CLI:
 ```bash
-pip install flintai-cli
+pip install switch-trust-cli
 ```
 
 <details>
@@ -56,16 +59,16 @@ install: toxicity detection, local evaluation of models retrieved from Huggingfa
 and garak probes and detectors. Install them with the optional `full`
 extra when you need those features:
 ```bash
-pip install "flintai-cli[full]"
+pip install "switch-trust-cli[full]"
 ```
 </details>
 
 ### Step 2: Configure your LLM provider
 
-Flint AI uses AI to analyze agent code and score reliability. Run the interactive setup:
+Switch Trust uses AI to analyze agent code and score reliability. Run the interactive setup:
 
 ```bash
-flintai init
+switch-trust init
 ```
 
 You'll be prompted to select a provider (Gemini, OpenAI, Anthropic, or LiteLLM), choose a model, and enter your API key.
@@ -80,13 +83,13 @@ You'll be prompted to select a provider (Gemini, OpenAI, Anthropic, or LiteLLM),
 
 </details>
 
-> Run into issues? See [installation troubleshooting](https://docs.flintai.dev/flintai/cli/troubleshooting/common-issues#installation)
+> Run into issues? See [installation troubleshooting](https://docs.switchagents.ai/switch-trust-cli/troubleshooting/common-issues#installation)
 
 ### Step 3: Try the example agents
 
-To demonstrate the CLIs capabilities, we've shipped this tool with two example agents. You can get them [here](https://github.com/sandbox-quantum/flintai-cli/tree/main/examples).
+To demonstrate the CLIs capabilities, we've shipped this tool with two example agents. You can get them [here](https://github.com/sandbox-quantum/switch-trust/tree/main/examples).
 
-**Both agents work with both `flintai scan` and `flintai eval`**:
+**Both agents work with both `switch-trust scan` and `switch-trust eval`**:
 
 | Agent | Framework | Description |
 |-------|-----------|-------------|
@@ -97,18 +100,18 @@ The included `examples/config.json` has both agents configured with builtin eval
 
 ---
 
-`flintai scan` finds security issues in the code without running the agent. We'll scan the bookstore agent to see what issues Flint AI can find:
+`switch-trust scan` finds security issues in the code without running the agent. We'll scan the bookstore agent to see what issues Switch Trust can find:
 ```bash
-flintai scan examples/bookstore_agent/
+switch-trust scan examples/bookstore_agent/
 ```
 
-<img src="https://raw.githubusercontent.com/sandbox-quantum/flintai-cli/main/images/scan-findings.png" alt="Scan results showing security findings" width="550">
+<img src="https://raw.githubusercontent.com/sandbox-quantum/switch-trust/main/images/scan-findings.png" alt="Scan results showing security findings" width="550">
 
 *Example: Scan found 2 security issues - High severity missing authentication and Medium severity unbounded execution loop*
 
 ---
 
-`flintai eval` tests runtime behavior, so the agent needs to be running. Start the bookstore agent:
+`switch-trust eval` tests runtime behavior, so the agent needs to be running. Start the bookstore agent:
 
 ```bash
 # Start the bookstore agent (serves on http://localhost:8010)
@@ -118,19 +121,19 @@ uvx --with openai-agents,fastapi --from uvicorn uvicorn examples.bookstore_agent
 In a new terminal, run evaluations:
 
 ```bash
-flintai eval run --model model-bookstore-agent --config examples/config.json
+switch-trust eval run --model model-bookstore-agent --config examples/config.json
 ```
 
 ### Step 4: Test your own agents
 
 See our documentation to configure, scan and evaluate your agents:
-- `flintai scan`
-  - [Scan your own agent](https://docs.flintai.dev/flintai/cli/scan/getting-started) — Apply Flint AI Scan to your codebase
-  - [Understand scan results](https://docs.flintai.dev/flintai/cli/scan/scan-results) — Interpret findings and severity scores
-- `flintai eval`
-  - [Evaluate your own agent](https://docs.flintai.dev/flintai/cli/eval/getting-started) — Configure and test your agent's behavior
-  - [Configuration](https://docs.flintai.dev/flintai/cli/eval/eval-configuration) — In-depth documentation of our configuration
-  - [Understand eval results](https://docs.flintai.dev/flintai/cli/eval/eval-results) — What the scores means and how to improve
+- `switch-trust scan`
+  - [Scan your own agent](https://docs.switchagents.ai/switch-trust-cli/scan/getting-started) — Apply Switch Trust Scan to your codebase
+  - [Understand scan results](https://docs.switchagents.ai/switch-trust-cli/scan/scan-results) — Interpret findings and severity scores
+- `switch-trust eval`
+  - [Evaluate your own agent](https://docs.switchagents.ai/switch-trust-cli/eval/getting-started) — Configure and test your agent's behavior
+  - [Configuration](https://docs.switchagents.ai/switch-trust-cli/eval/eval-configuration) — In-depth documentation of our configuration
+  - [Understand eval results](https://docs.switchagents.ai/switch-trust-cli/eval/eval-results) — What the scores means and how to improve
 
 **Ship with confidence.** Validate behavior, catch risks, prove readiness.
 
@@ -139,12 +142,12 @@ See our documentation to configure, scan and evaluate your agents:
 
 ### `init`
 
-Setup wizard that configures Flint AI for first use. Creates the `~/.flintai` directory with a `.env` file (LLM provider, API key, runtime settings) and a `config.json` skeleton.
+Setup wizard that configures Switch Trust for first use. Creates the `~/.switch-trust` directory with a `.env` file (LLM provider, API key, runtime settings) and a `config.json` skeleton.
 
 Runs automatically on first use in non-CI environments. You can re-run it at any time to reconfigure.
 
 ```bash
-flintai init
+switch-trust init
 ```
 
 ### `scan`
@@ -153,16 +156,16 @@ AI-powered security analysis of agent source code. Finds vulnerabilities, miscon
 
 ```bash
 # Scan a directory
-flintai scan /path/to/agent/code
+switch-trust scan /path/to/agent/code
 
 # Scan a single file
-flintai scan agent.py
+switch-trust scan agent.py
 
 # Specify output file
-flintai scan /path/to/code --output results.json
+switch-trust scan /path/to/code --output results.json
 ```
 
-[Full scan guide](https://docs.flintai.dev/flintai/cli/scan/getting-started)
+[Full scan guide](https://docs.switchagents.ai/switch-trust-cli/scan/getting-started)
 
 ### `eval`
 
@@ -170,49 +173,49 @@ Test agent behavior at runtime. Get a evaluation score proving production-readin
 
 ```bash
 # List all available configuration
-flintai eval evaluations list
+switch-trust eval evaluations list
 
 # List your agents and models
-flintai eval models list
+switch-trust eval models list
 
 # Attach an evalation to your agent
-flintai eval model-evaluations attach \
+switch-trust eval model-evaluations attach \
   --model my-agent \
   --eval eval-llm01-adversarial
 
 # Run all evaluations for an agent
-flintai eval run --model my-agent
+switch-trust eval run --model my-agent
 ```
 
-The `flintai eval` command requires configuration. See [Configuration](https://docs.flintai.dev/flintai/cli/eval/eval-configuration) to:
+The `switch-trust eval` command requires configuration. See [Configuration](https://docs.switchagents.ai/switch-trust-cli/eval/eval-configuration) to:
 1. Define your models (agents to test)
 2. View available evaluations
 3. Attach evaluations to models
 
-[Full eval guide](https://docs.flintai.dev/flintai/cli/eval/getting-started)
+[Full eval guide](https://docs.switchagents.ai/switch-trust-cli/eval/getting-started)
 
 ## Documentation
 
 **Complete guides and reference:**
-- [Getting started](https://docs.flintai.dev)
-- [Command reference](https://docs.flintai.dev/flintai/cli/reference/commands)
-- [Configuration](https://docs.flintai.dev/flintai/cli/eval/eval-configuration)
-- [Environment variables](https://docs.flintai.dev/flintai/cli/reference/env-vars)
-- [Built-in evaluations](https://docs.flintai.dev/flintai/cli/reference/builtin-evaluations)
-- [Data privacy](https://docs.flintai.dev/flintai/cli/reference/data-privacy)
-- [FAQ](https://docs.flintai.dev/flintai/cli/resources/faq)
+- [Getting started](https://docs.switchagents.ai)
+- [Command reference](https://docs.switchagents.ai/switch-trust-cli/reference/commands)
+- [Configuration](https://docs.switchagents.ai/switch-trust-cli/eval/eval-configuration)
+- [Environment variables](https://docs.switchagents.ai/switch-trust-cli/reference/env-vars)
+- [Built-in evaluations](https://docs.switchagents.ai/switch-trust-cli/reference/builtin-evaluations)
+- [Data privacy](https://docs.switchagents.ai/switch-trust-cli/reference/data-privacy)
+- [FAQ](https://docs.switchagents.ai/switch-trust-cli/resources/faq)
 
 ## Data privacy
 
-Flint AI runs on your machine, but several features can call external LLM providers. This can be configured via `GENERATOR_MODEL`
-(located in `~/.flintai/.env`, created by `flintai init`). You can set this to a remote managed LLM (i.e. `gemini`, `openai`, `anthropic`)
+Switch Trust runs on your machine, but several features can call external LLM providers. This can be configured via `GENERATOR_MODEL`
+(located in `~/.switch-trust/.env`, created by `switch-trust init`). You can set this to a remote managed LLM (i.e. `gemini`, `openai`, `anthropic`)
 or a locally hosted LLM (i.e. `litellm` or `ollama`).
 
-[Read more](https://docs.flintai.dev/flintai/cli/reference/data-privacy).
+[Read more](https://docs.switchagents.ai/switch-trust-cli/reference/data-privacy).
 
 ### Telemetry
 
-Flint AI CLI collects **anonymous usage analytics** to help us understand how the tool is used and improve it. Telemetry is **opt-in** — you are asked for consent during `flintai init`, and no data is sent without your explicit agreement.
+Switch Trust CLI collects **anonymous usage analytics** to help us understand how the tool is used and improve it. Telemetry is **opt-in** — you are asked for consent during `switch-trust init`, and no data is sent without your explicit agreement.
 
 **What we collect:**
 
@@ -227,7 +230,7 @@ Flint AI CLI collects **anonymous usage analytics** to help us understand how th
 
 **What we never collect:** source code, file paths, prompts, API keys, model outputs, usernames, hostnames, IP addresses, or any personally identifiable information.
 
-**Opting out:** Set `FLINTAI_TELEMETRY_CONSENT=false` in `~/.flintai/.env`, or select "N" when prompted during `flintai init`. You can change this at any time.
+**Opting out:** Set `SWITCH_TRUST_TELEMETRY_CONSENT=false` in `~/.switch-trust/.env`, or select "N" when prompted during `switch-trust init`. You can change this at any time.
 
 ## Contributing
 
@@ -239,5 +242,5 @@ Free to use - [full license](LICENSE).
 
 ## Contact
 
-- Website: [https://flintai.dev](https://flintai.dev)
-- Email: [info@flintai.dev](mailto:info@flintai.dev)
+- Website: [https://switchagents.ai](https://switchagents.ai)
+- Email: [info@switchagents.ai](mailto:info@switchagents.ai)

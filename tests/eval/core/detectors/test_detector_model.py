@@ -1,15 +1,15 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.detectors.detector_model import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.detectors.detector_model import (
     _EVIDENCE_END,
     _EVIDENCE_START,
     ModelDetector,
     _extract_text,
     _parse_score,
 )
-from flintai.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model import ModelResponse
 
 
 def _make_response(text: str) -> ModelResponse:

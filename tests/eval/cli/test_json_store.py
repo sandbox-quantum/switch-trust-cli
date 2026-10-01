@@ -3,9 +3,9 @@ import os
 import tempfile
 import unittest
 
-from flintai.eval.db.base.eval.model_eval_types import DbModelEvaluation
-from flintai.eval.db.base.models.model_types import DbModel
-from flintai.eval.db.json.repository_json import JsonRepository
+from switch_trust.eval.db.base.eval.model_eval_types import DbModelEvaluation
+from switch_trust.eval.db.base.models.model_types import DbModel
+from switch_trust.eval.db.json.repository_json import JsonRepository
 
 _SAMPLE_CONFIG = {
     "models": [
@@ -662,7 +662,7 @@ class TestJsonMessageCollectionSearch(unittest.TestCase):
             self.store.message_collections.get("missing")
 
     def test_get_message_collection_in_memory(self):
-        from flintai.eval.core.message.message_collection import (
+        from switch_trust.eval.core.message.message_collection import (
             MessageCollection,
         )
 

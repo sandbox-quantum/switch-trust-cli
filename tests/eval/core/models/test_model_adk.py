@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model_adk import ADKModel
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model_adk import ADKModel
 
 
 def _make_aiohttp_session_with_calls(call_responses: list[dict]):
@@ -11,7 +11,7 @@ def _make_aiohttp_session_with_calls(call_responses: list[dict]):
     responses = []
     for json_data in call_responses:
         mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
+        mock_response.status = 200
         mock_response.json = AsyncMock(return_value=json_data)
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=False)
@@ -26,7 +26,7 @@ def _make_aiohttp_session_with_calls(call_responses: list[dict]):
 
 
 class TestADKModel(unittest.IsolatedAsyncioTestCase):
-    @patch("flintai.eval.core.models.model_adk.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_adk.aiohttp.ClientSession")
     async def test_generate_text(self, mock_session_cls):
         mock_session = _make_aiohttp_session_with_calls(
             [
@@ -61,7 +61,7 @@ class TestADKModel(unittest.IsolatedAsyncioTestCase):
             "Hello!",
         )
 
-    @patch("flintai.eval.core.models.model_adk.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_adk.aiohttp.ClientSession")
     async def test_generate_empty_response(self, mock_session_cls):
         mock_session = _make_aiohttp_session_with_calls(
             [
@@ -80,7 +80,7 @@ class TestADKModel(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(resp.message)
 
-    @patch("flintai.eval.core.models.model_adk.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_adk.aiohttp.ClientSession")
     async def test_new_session_per_call(self, mock_session_cls):
         mock_session1 = _make_aiohttp_session_with_calls(
             [
@@ -123,7 +123,7 @@ class TestADKModel(unittest.IsolatedAsyncioTestCase):
         # Each generate creates a new ClientSession
         self.assertEqual(mock_session_cls.call_count, 2)
 
-    @patch("flintai.eval.core.models.model_adk.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_adk.aiohttp.ClientSession")
     async def test_run_url(self, mock_session_cls):
         mock_session = _make_aiohttp_session_with_calls(
             [
@@ -157,7 +157,7 @@ class TestADKModel(unittest.IsolatedAsyncioTestCase):
         payload = run_call.kwargs["json"]
         self.assertEqual(payload["appName"], "test_app")
 
-    @patch("flintai.eval.core.models.model_adk.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_adk.aiohttp.ClientSession")
     async def test_headers_sent_on_both_calls(self, mock_session_cls):
         mock_session = _make_aiohttp_session_with_calls(
             [
@@ -193,7 +193,7 @@ class TestADKModel(unittest.IsolatedAsyncioTestCase):
             {"Authorization": "Bearer test-token"},
         )
 
-    @patch("flintai.eval.core.models.model_adk.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_adk.aiohttp.ClientSession")
     async def test_no_headers_defaults_to_empty_dict(self, mock_session_cls):
         mock_session = _make_aiohttp_session_with_calls(
             [

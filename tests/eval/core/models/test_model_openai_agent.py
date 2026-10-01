@@ -1,14 +1,14 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model_openai_agent import OpenAIAgentModel
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model_openai_agent import OpenAIAgentModel
 
 
 def _make_aiohttp_mocks(json_data: dict):
     """Create mock aiohttp session and response for a single POST call."""
     mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
+    mock_response.status = 200
     mock_response.json = AsyncMock(return_value=json_data)
     mock_response.__aenter__ = AsyncMock(return_value=mock_response)
     mock_response.__aexit__ = AsyncMock(return_value=False)
@@ -22,7 +22,7 @@ def _make_aiohttp_mocks(json_data: dict):
 
 
 class TestOpenAIAgentModel(unittest.IsolatedAsyncioTestCase):
-    @patch("flintai.eval.core.models.model_openai_agent.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_openai_agent.aiohttp.ClientSession")
     async def test_generate_text(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "Hello!"})
         mock_session_cls.return_value = mock_session
@@ -43,7 +43,7 @@ class TestOpenAIAgentModel(unittest.IsolatedAsyncioTestCase):
             "Hello!",
         )
 
-    @patch("flintai.eval.core.models.model_openai_agent.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_openai_agent.aiohttp.ClientSession")
     async def test_generate_empty_output(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": ""})
         mock_session_cls.return_value = mock_session
@@ -54,7 +54,7 @@ class TestOpenAIAgentModel(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(resp.message)
 
-    @patch("flintai.eval.core.models.model_openai_agent.aiohttp.ClientSession")
+    @patch("switch_trust.eval.core.models.model_openai_agent.aiohttp.ClientSession")
     async def test_custom_endpoint(self, mock_session_cls):
         mock_session = _make_aiohttp_mocks({"output": "ok"})
         mock_session_cls.return_value = mock_session

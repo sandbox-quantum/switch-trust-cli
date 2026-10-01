@@ -5,8 +5,8 @@ Tests for model string parsing and the unified Finding schema.
 import dataclasses
 import unittest
 
-from flintai.scan.llm_provider import parse_model_string
-from flintai.scan.schema import AffectedComponent, CvssScores, Evidence, Finding
+from switch_trust.scan.llm_provider import parse_model_string
+from switch_trust.scan.schema import AffectedComponent, CvssScores, Evidence, Finding
 
 # ── Model string parsing ────────────────────────────────────────────
 
@@ -76,7 +76,7 @@ class TestUnifiedFindingSchema(unittest.TestCase):
         self.assertEqual(d["affected_components"][0]["name"], "agent.py")
         self.assertEqual(d["evidence"][0]["code_snippet"], "eval(user_input)")
 
-        from flintai.scan.agent_scanner import _dicts_to_findings
+        from switch_trust.scan.agent_scanner import _dicts_to_findings
 
         reconstructed = _dicts_to_findings([d])
         self.assertEqual(len(reconstructed), 1)

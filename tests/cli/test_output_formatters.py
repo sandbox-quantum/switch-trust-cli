@@ -6,7 +6,7 @@ import dataclasses
 import json
 import unittest
 
-from flintai.cli.output_formatters import (
+from switch_trust.cli.output_formatters import (
     EVAL_SCHEMA_VERSION,
     JsonEvalOutputFormatter,
     JsonScanOutputFormatter,
@@ -17,18 +17,18 @@ from flintai.cli.output_formatters import (
     get_scan_output_formatter,
     prepare_eval_output,
 )
-from flintai.cli.runner import CliRunResult
-from flintai.eval.core.eval.evaluation import (
+from switch_trust.cli.runner import CliRunResult
+from switch_trust.eval.core.eval.evaluation import (
     EvaluationResult,
     EvaluationStatus,
     EvaluationSummary,
 )
-from flintai.scan.schema import (
+from switch_trust.scan.schema import (
     CvssScores,
     Finding,
     ScanReport,
 )
-from flintai.schema import AffectedComponent, Evidence
+from switch_trust.schema import AffectedComponent, Evidence
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -241,7 +241,7 @@ class TestScanSarif(unittest.TestCase):
         formatter = SarifScanOutputFormatter()
         sarif = json.loads(formatter.format(self.scan_report))
         driver = sarif["runs"][0]["tool"]["driver"]
-        self.assertEqual(driver["name"], "flintai-scan")
+        self.assertEqual(driver["name"], "switch-trust-scan")
         self.assertIn("version", driver)
         self.assertIn("informationUri", driver)
 
@@ -576,7 +576,7 @@ class TestEvalSarif(unittest.TestCase):
         formatter = SarifEvalOutputFormatter()
         sarif = json.loads(formatter.format([self.eval_run], "/config.json"))
         driver = sarif["runs"][0]["tool"]["driver"]
-        self.assertEqual(driver["name"], "flintai-eval")
+        self.assertEqual(driver["name"], "switch-trust-eval")
 
     def test_one_result_per_run(self):
         formatter = SarifEvalOutputFormatter()

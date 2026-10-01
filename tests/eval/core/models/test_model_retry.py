@@ -1,13 +1,27 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from flintai.eval.common.schema import Content, Message, Part, PartType, Role
-from flintai.eval.core.models.model import ModelResponse
-from flintai.eval.core.models.model_retry import (
+from switch_trust.eval.common.schema import Content, Message, Part, PartType, Role
+from switch_trust.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model_retry import (
     ExponentialRetryModel,
     FibonacciRetryModel,
     RetryModel,
+    _extract_retry_after,
 )
+
+
+class _StatusError(Exception):
+    """Test error that carries HTTP-style status/headers, like SDK errors do."""
+
+    def __init__(self, msg="", *, status_code=None, headers=None, response=None):
+        super().__init__(msg)
+        if status_code is not None:
+            self.status_code = status_code
+        if headers is not None:
+            self.headers = headers
+        if response is not None:
+            self.response = response
 
 
 def _make_message():
@@ -33,10 +47,10 @@ class TestExponentialRetryModel(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(result, ModelResponse)
 
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform", return_value=0.0
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_retries_on_transient_error(self, mock_sleep, _):
@@ -54,10 +68,10 @@ class TestExponentialRetryModel(unittest.IsolatedAsyncioTestCase):
         mock_sleep.assert_called_once_with(1.0)
 
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform", return_value=0.0
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_retries_on_rate_limit(self, mock_sleep, _):
@@ -80,10 +94,10 @@ class TestExponentialRetryModel(unittest.IsolatedAsyncioTestCase):
         mock_sleep.assert_any_call(1.0)
 
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform", return_value=0.0
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_retries_on_status_attr(self, mock_sleep, _):
@@ -111,10 +125,10 @@ class TestExponentialRetryModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inner.generate.call_count, 1)
 
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform", return_value=0.0
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_raises_after_max_retries(self, mock_sleep, _):
@@ -126,10 +140,10 @@ class TestExponentialRetryModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inner.generate.call_count, 3)
 
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform", return_value=0.0
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_exponential_backoff(self, mock_sleep, _):
@@ -154,7 +168,7 @@ class TestExponentialRetryModel(unittest.IsolatedAsyncioTestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_jitter_applied(self, mock_sleep):
@@ -171,6 +185,105 @@ class TestExponentialRetryModel(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(delay, 1.0)
         self.assertLessEqual(delay, 2.0)
 
+    async def test_terminal_401_raises_immediately(self):
+        err = _StatusError("unauthorized", status_code=401)
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=err)
+        model = ExponentialRetryModel(inner, max_retries=3)
+        with self.assertRaises(_StatusError):
+            await model.generate(_make_message())
+        self.assertEqual(inner.generate.call_count, 1)
+
+    async def test_terminal_403_raises_immediately(self):
+        err = _StatusError("forbidden", status_code=403)
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=err)
+        model = ExponentialRetryModel(inner, max_retries=3)
+        with self.assertRaises(_StatusError):
+            await model.generate(_make_message())
+        self.assertEqual(inner.generate.call_count, 1)
+
+    async def test_terminal_404_raises_immediately(self):
+        err = _StatusError("not found", status_code=404)
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=err)
+        model = ExponentialRetryModel(inner, max_retries=3)
+        with self.assertRaises(_StatusError):
+            await model.generate(_make_message())
+        self.assertEqual(inner.generate.call_count, 1)
+
+    @patch(
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
+    )
+    @patch(
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
+        new_callable=AsyncMock,
+    )
+    async def test_retry_after_header_overrides_backoff(self, mock_sleep, _):
+        err = _StatusError(
+            "rate limited", status_code=429, headers={"Retry-After": "7"}
+        )
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=[err, _make_response()])
+        model = ExponentialRetryModel(inner, max_retries=3, base_delay=2.0)
+        await model.generate(_make_message())
+        mock_sleep.assert_called_once_with(7.0)
+
+    @patch(
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
+    )
+    @patch(
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
+        new_callable=AsyncMock,
+    )
+    async def test_retry_after_from_response_headers(self, mock_sleep, _):
+        response = MagicMock()
+        response.headers = {"Retry-After": "3"}
+        err = _StatusError("rate limited", status_code=429, response=response)
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=[err, _make_response()])
+        model = ExponentialRetryModel(inner, max_retries=3, base_delay=2.0)
+        await model.generate(_make_message())
+        mock_sleep.assert_called_once_with(3.0)
+
+    @patch(
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
+    )
+    @patch(
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
+        new_callable=AsyncMock,
+    )
+    async def test_retry_after_malformed_falls_back_to_backoff(self, mock_sleep, _):
+        err = _StatusError(
+            "rate limited",
+            status_code=429,
+            headers={"Retry-After": "not-a-number"},
+        )
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=[err, _make_response()])
+        model = ExponentialRetryModel(inner, max_retries=3, base_delay=0.5)
+        await model.generate(_make_message())
+        mock_sleep.assert_called_once_with(0.5)
+
+    @patch(
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
+        new_callable=AsyncMock,
+    )
+    async def test_retry_after_delay_is_jittered(self, mock_sleep):
+        # 100 concurrent 429s all carry the same Retry-After; without jitter
+        # they'd all fire again at the same instant. Assert the actual sleep
+        # is in [retry_after, 2 * retry_after).
+        err = _StatusError(
+            "rate limited", status_code=429, headers={"Retry-After": "5"}
+        )
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=[err, _make_response()])
+        model = ExponentialRetryModel(inner, max_retries=3)
+        await model.generate(_make_message())
+        delay = mock_sleep.call_args[0][0]
+        self.assertGreaterEqual(delay, 5.0)
+        self.assertLess(delay, 10.0)
+
 
 class TestFibonacciRetryModel(unittest.IsolatedAsyncioTestCase):
     async def test_succeeds_on_first_try(self):
@@ -182,10 +295,10 @@ class TestFibonacciRetryModel(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(result, ModelResponse)
 
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform", return_value=0.5
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.5
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_retries_on_transient_error(self, mock_sleep, _):
@@ -203,11 +316,11 @@ class TestFibonacciRetryModel(unittest.IsolatedAsyncioTestCase):
         mock_sleep.assert_called_once_with(0.5)
 
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform",
+        "switch_trust.eval.core.models.model_retry.random.uniform",
         side_effect=lambda a, b: b,
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_fibonacci_backoff_sequence(self, mock_sleep, _):
@@ -238,11 +351,11 @@ class TestFibonacciRetryModel(unittest.IsolatedAsyncioTestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform",
+        "switch_trust.eval.core.models.model_retry.random.uniform",
         side_effect=lambda a, b: b,
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_delay_capped_at_max(self, mock_sleep, _):
@@ -274,10 +387,10 @@ class TestFibonacciRetryModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inner.generate.call_count, 1)
 
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform", return_value=0.0
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_raises_after_max_retries(self, mock_sleep, _):
@@ -289,7 +402,7 @@ class TestFibonacciRetryModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inner.generate.call_count, 4)
 
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_jitter_between_zero_and_fib(self, mock_sleep):
@@ -307,11 +420,87 @@ class TestFibonacciRetryModel(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(delay, 0.0)
         self.assertLessEqual(delay, 1.0)
 
+    async def test_terminal_401_raises_immediately(self):
+        err = _StatusError("unauthorized", status_code=401)
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=err)
+        model = FibonacciRetryModel(inner, max_retries=5)
+        with self.assertRaises(_StatusError):
+            await model.generate(_make_message())
+        self.assertEqual(inner.generate.call_count, 1)
+
+    async def test_terminal_403_raises_immediately(self):
+        err = _StatusError("forbidden", status_code=403)
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=err)
+        model = FibonacciRetryModel(inner, max_retries=5)
+        with self.assertRaises(_StatusError):
+            await model.generate(_make_message())
+        self.assertEqual(inner.generate.call_count, 1)
+
+    async def test_terminal_404_raises_immediately(self):
+        err = _StatusError("not found", status_code=404)
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=err)
+        model = FibonacciRetryModel(inner, max_retries=5)
+        with self.assertRaises(_StatusError):
+            await model.generate(_make_message())
+        self.assertEqual(inner.generate.call_count, 1)
+
     @patch(
-        "flintai.eval.core.models.model_retry.random.uniform", return_value=0.0
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
     )
     @patch(
-        "flintai.eval.core.models.model_retry.asyncio.sleep",
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
+        new_callable=AsyncMock,
+    )
+    async def test_retry_after_header_overrides_backoff(self, mock_sleep, _):
+        err = _StatusError(
+            "rate limited", status_code=429, headers={"Retry-After": "4"}
+        )
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=[err, _make_response()])
+        model = FibonacciRetryModel(inner, max_retries=5)
+        await model.generate(_make_message())
+        mock_sleep.assert_called_once_with(4.0)
+
+
+class TestExtractRetryAfter(unittest.TestCase):
+    def test_reads_headers_attribute(self):
+        err = _StatusError("x", headers={"Retry-After": "10"})
+        self.assertEqual(_extract_retry_after(err), 10.0)
+
+    def test_reads_response_headers_attribute(self):
+        response = MagicMock()
+        response.headers = {"Retry-After": "5"}
+        err = _StatusError("x", response=response)
+        self.assertEqual(_extract_retry_after(err), 5.0)
+
+    def test_lowercase_header_key(self):
+        err = _StatusError("x", headers={"retry-after": "2"})
+        self.assertEqual(_extract_retry_after(err), 2.0)
+
+    def test_returns_none_when_absent(self):
+        self.assertIsNone(_extract_retry_after(_StatusError("x")))
+
+    def test_returns_none_when_malformed(self):
+        err = _StatusError("x", headers={"Retry-After": "not-a-number"})
+        self.assertIsNone(_extract_retry_after(err))
+
+    def test_clamps_oversized_value(self):
+        # A tenant endpoint could park a worker for a day; we cap the delay.
+        err = _StatusError("x", headers={"Retry-After": "86400"})
+        self.assertEqual(_extract_retry_after(err), 60.0)
+
+    def test_clamps_negative_value_to_zero(self):
+        err = _StatusError("x", headers={"Retry-After": "-5"})
+        self.assertEqual(_extract_retry_after(err), 0.0)
+
+    @patch(
+        "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0
+    )
+    @patch(
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
         new_callable=AsyncMock,
     )
     async def test_retries_on_rate_limit(self, mock_sleep, _):

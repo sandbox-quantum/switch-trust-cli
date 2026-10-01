@@ -2,9 +2,9 @@ import unittest
 
 from pydantic import BaseModel
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model import ModelResponse
-from flintai.eval.core.models.response_schema import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.response_schema import (
     STRUCTURED_OUTPUT_TOOL_NAME,
     parse_json_text,
     parse_model_response,

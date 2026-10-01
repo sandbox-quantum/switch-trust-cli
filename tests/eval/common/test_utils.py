@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from flintai.eval.common.utils import (
+from switch_trust.eval.common.utils import (
     extract_json,
     resolve_env,
     resolve_env_dict,

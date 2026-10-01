@@ -1,5 +1,5 @@
-from flintai.cli.runner import CliRunResult, _aggregate_summary
-from flintai.eval.core.eval.evaluation import EvaluationStatus, EvaluationSummary
+from switch_trust.cli.runner import CliRunResult, _aggregate_summary
+from switch_trust.eval.core.eval.evaluation import EvaluationStatus, EvaluationSummary
 
 
 def _make_run(

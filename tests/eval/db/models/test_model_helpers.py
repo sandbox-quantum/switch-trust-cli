@@ -1,12 +1,15 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from flintai.eval.core.models.model_retry import RetryModel
-from flintai.eval.db.base.models.model_helpers import (
+from switch_trust.eval.core.models.model_per_endpoint_limiter import (
+    PerEndpointLimiter,
+)
+from switch_trust.eval.core.models.model_retry import RetryModel
+from switch_trust.eval.db.base.models.model_helpers import (
     _create_inner_model,
     create_model,
 )
-from flintai.eval.db.base.models.model_types import DbModel, ModelType
+from switch_trust.eval.db.base.models.model_types import DbModel, ModelType
 
 
 def _db_model(**overrides) -> DbModel:
@@ -21,7 +24,7 @@ def _db_model(**overrides) -> DbModel:
 
 class TestCreateModel(unittest.TestCase):
     @patch(
-        "flintai.eval.db.base.models.model_helpers._create_inner_model",
+        "switch_trust.eval.db.base.models.model_helpers._create_inner_model",
     )
     def test_returns_retry_model(self, mock_create_inner):
         mock_create_inner.return_value = MagicMock()
@@ -29,17 +32,86 @@ class TestCreateModel(unittest.TestCase):
         self.assertIsInstance(result, RetryModel)
 
     @patch(
-        "flintai.eval.db.base.models.model_helpers._create_inner_model",
+        "switch_trust.eval.db.base.models.model_helpers._create_inner_model",
     )
     def test_passes_max_retries(self, mock_create_inner):
         mock_create_inner.return_value = MagicMock()
         result = create_model(_db_model(), max_retries=3)
         self.assertEqual(result._max_retries, 3)
 
+    @patch(
+        "switch_trust.eval.db.base.models.model_helpers._create_inner_model",
+    )
+    def test_wraps_http_type_in_limiter(self, mock_create_inner):
+        mock_create_inner.return_value = MagicMock()
+        for http_type in (
+            ModelType.ADK,
+            ModelType.OPENAI_AGENT,
+            ModelType.ANTHROPIC_AGENT,
+            ModelType.GENERIC_HTTP,
+            ModelType.LANGSERVE,
+            ModelType.VERTEX_AGENT_RUNTIME,
+        ):
+            with self.subTest(model_type=http_type):
+                PerEndpointLimiter._reset_state_for_testing()
+                result = create_model(
+                    _db_model(type=http_type, host="http://tenant.example"),
+                )
+                self.assertIsInstance(result, RetryModel)
+                self.assertIsInstance(result._model, PerEndpointLimiter)
+                self.assertEqual(result._model._endpoint_url, "http://tenant.example")
+
+    @patch(
+        "switch_trust.eval.db.base.models.model_helpers._create_inner_model",
+    )
+    def test_no_limiter_for_sdk_type(self, mock_create_inner):
+        inner = MagicMock()
+        mock_create_inner.return_value = inner
+        for sdk_type in (
+            ModelType.OPENAI,
+            ModelType.ANTHROPIC,
+            ModelType.GEMINI,
+            ModelType.LITELLM,
+            ModelType.HUGGINGFACE,
+            ModelType.OLLAMA,
+            ModelType.OPENAI_COMPATIBLE,
+        ):
+            with self.subTest(model_type=sdk_type):
+                result = create_model(
+                    _db_model(type=sdk_type, host="http://irrelevant"),
+                )
+                self.assertIsInstance(result, RetryModel)
+                self.assertIs(result._model, inner)
+
+    @patch(
+        "switch_trust.eval.db.base.models.model_helpers._create_inner_model",
+    )
+    def test_no_limiter_when_http_host_empty(self, mock_create_inner):
+        inner = MagicMock()
+        mock_create_inner.return_value = inner
+        result = create_model(_db_model(type=ModelType.GENERIC_HTTP, host=None))
+        self.assertIsInstance(result, RetryModel)
+        self.assertIs(result._model, inner)
+
+    @patch(
+        "switch_trust.eval.db.base.models.model_helpers._create_inner_model",
+    )
+    def test_passes_limiter_kwargs(self, mock_create_inner):
+        mock_create_inner.return_value = MagicMock()
+        PerEndpointLimiter._reset_state_for_testing()
+        result = create_model(
+            _db_model(type=ModelType.VERTEX_AGENT_RUNTIME, host="http://x"),
+            per_endpoint_limit=4,
+            initial_jitter_max=0.5,
+        )
+        limiter = result._model
+        self.assertEqual(limiter._limit, 4)
+        self.assertEqual(limiter._jitter_max, 0.5)
+
 
 class TestCreateInnerModelAnthropic(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_anthropic.AnthropicModel",
+        "switch_trust.eval.core.models.model_anthropic.AnthropicModel",
     )
     @patch("anthropic.AsyncAnthropic")
     def test_creates_anthropic_model(
@@ -57,7 +129,7 @@ class TestCreateInnerModelAnthropic(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_anthropic.AnthropicModel",
+        "switch_trust.eval.core.models.model_anthropic.AnthropicModel",
     )
     @patch("anthropic.AsyncAnthropic")
     def test_anthropic_with_api_key(
@@ -74,7 +146,7 @@ class TestCreateInnerModelAnthropic(unittest.TestCase):
         MockClient.assert_called_once_with(api_key="sk-ant-123")
 
     @patch(
-        "flintai.eval.core.models.model_anthropic.AnthropicModel",
+        "switch_trust.eval.core.models.model_anthropic.AnthropicModel",
     )
     @patch("anthropic.AsyncAnthropic")
     def test_anthropic_without_api_key(
@@ -92,7 +164,7 @@ class TestCreateInnerModelAnthropic(unittest.TestCase):
 
 class TestCreateInnerModelOpenAI(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_openai.OpenAIModel",
+        "switch_trust.eval.core.models.model_openai.OpenAIModel",
     )
     @patch("openai.AsyncOpenAI")
     def test_creates_openai_model(
@@ -110,7 +182,7 @@ class TestCreateInnerModelOpenAI(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_openai.OpenAIModel",
+        "switch_trust.eval.core.models.model_openai.OpenAIModel",
     )
     @patch("openai.AsyncOpenAI")
     def test_openai_with_api_key(
@@ -127,7 +199,7 @@ class TestCreateInnerModelOpenAI(unittest.TestCase):
         MockClient.assert_called_once_with(api_key="sk-openai-123")
 
     @patch(
-        "flintai.eval.core.models.model_openai.OpenAIModel",
+        "switch_trust.eval.core.models.model_openai.OpenAIModel",
     )
     @patch("openai.AsyncOpenAI")
     def test_openai_without_api_key(
@@ -142,7 +214,7 @@ class TestCreateInnerModelOpenAI(unittest.TestCase):
 
 class TestCreateInnerModelGemini(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_gemini.GeminiModel",
+        "switch_trust.eval.core.models.model_gemini.GeminiModel",
     )
     @patch("google.genai.Client")
     def test_creates_gemini_model(
@@ -160,7 +232,7 @@ class TestCreateInnerModelGemini(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_gemini.GeminiModel",
+        "switch_trust.eval.core.models.model_gemini.GeminiModel",
     )
     @patch("google.genai.Client")
     def test_gemini_with_api_key(
@@ -177,7 +249,7 @@ class TestCreateInnerModelGemini(unittest.TestCase):
         MockClient.assert_called_once_with(api_key="gemini-key")
 
     @patch(
-        "flintai.eval.core.models.model_gemini.GeminiModel",
+        "switch_trust.eval.core.models.model_gemini.GeminiModel",
     )
     @patch("google.genai.Client")
     def test_gemini_without_api_key(
@@ -192,7 +264,7 @@ class TestCreateInnerModelGemini(unittest.TestCase):
 
 class TestCreateInnerModelLiteLLM(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_litellm.LiteLLMModel",
+        "switch_trust.eval.core.models.model_litellm.LiteLLMModel",
     )
     def test_creates_litellm_model(self, MockModel):
         db = _db_model(
@@ -209,7 +281,7 @@ class TestCreateInnerModelLiteLLM(unittest.TestCase):
 
 class TestCreateInnerModelHuggingFace(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_huggingface.HuggingFaceModel",
+        "switch_trust.eval.core.models.model_huggingface.HuggingFaceModel",
     )
     def test_creates_huggingface_model(self, MockModel):
         db = _db_model(
@@ -226,7 +298,7 @@ class TestCreateInnerModelHuggingFace(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_huggingface.HuggingFaceModel",
+        "switch_trust.eval.core.models.model_huggingface.HuggingFaceModel",
     )
     def test_huggingface_without_key(self, MockModel):
         db = _db_model(
@@ -243,7 +315,7 @@ class TestCreateInnerModelHuggingFace(unittest.TestCase):
 
 class TestCreateInnerModelOllama(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_ollama.OllamaModel",
+        "switch_trust.eval.core.models.model_ollama.OllamaModel",
     )
     def test_creates_ollama_model(self, MockModel):
         db = _db_model(
@@ -259,7 +331,7 @@ class TestCreateInnerModelOllama(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_ollama.OllamaModel",
+        "switch_trust.eval.core.models.model_ollama.OllamaModel",
     )
     def test_ollama_default_host(self, MockModel):
         db = _db_model(
@@ -276,7 +348,7 @@ class TestCreateInnerModelOllama(unittest.TestCase):
 
 class TestCreateInnerModelADK(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_adk.ADKModel",
+        "switch_trust.eval.core.models.model_adk.ADKModel",
     )
     def test_creates_adk_model(self, MockModel):
         db = _db_model(
@@ -295,7 +367,7 @@ class TestCreateInnerModelADK(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_adk.ADKModel",
+        "switch_trust.eval.core.models.model_adk.ADKModel",
     )
     def test_adk_default_host(self, MockModel):
         db = _db_model(
@@ -312,7 +384,7 @@ class TestCreateInnerModelADK(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_adk.ADKModel",
+        "switch_trust.eval.core.models.model_adk.ADKModel",
     )
     def test_adk_headers_passed_through(self, MockModel):
         db = _db_model(
@@ -333,7 +405,7 @@ class TestCreateInnerModelADK(unittest.TestCase):
 
 class TestCreateInnerModelOpenAIAgent(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_openai_agent.OpenAIAgentModel",
+        "switch_trust.eval.core.models.model_openai_agent.OpenAIAgentModel",
     )
     def test_creates_openai_agent_model(self, MockModel):
         db = _db_model(
@@ -350,7 +422,7 @@ class TestCreateInnerModelOpenAIAgent(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_openai_agent.OpenAIAgentModel",
+        "switch_trust.eval.core.models.model_openai_agent.OpenAIAgentModel",
     )
     def test_openai_agent_defaults(self, MockModel):
         db = _db_model(
@@ -367,7 +439,7 @@ class TestCreateInnerModelOpenAIAgent(unittest.TestCase):
 
 class TestCreateInnerModelAnthropicAgent(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_anthropic_agent.AnthropicAgentModel",
+        "switch_trust.eval.core.models.model_anthropic_agent.AnthropicAgentModel",
     )
     def test_creates_anthropic_agent_model(self, MockModel):
         db = _db_model(
@@ -384,7 +456,7 @@ class TestCreateInnerModelAnthropicAgent(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_anthropic_agent.AnthropicAgentModel",
+        "switch_trust.eval.core.models.model_anthropic_agent.AnthropicAgentModel",
     )
     def test_anthropic_agent_defaults(self, MockModel):
         db = _db_model(
@@ -401,7 +473,7 @@ class TestCreateInnerModelAnthropicAgent(unittest.TestCase):
 
 class TestCreateInnerModelOpenAICompatible(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_openai_compatible.OpenAICompatibleModel",
+        "switch_trust.eval.core.models.model_openai_compatible.OpenAICompatibleModel",
     )
     def test_creates_openai_compatible_model(self, MockModel):
         db = _db_model(
@@ -422,7 +494,7 @@ class TestCreateInnerModelOpenAICompatible(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_openai_compatible.OpenAICompatibleModel",
+        "switch_trust.eval.core.models.model_openai_compatible.OpenAICompatibleModel",
     )
     def test_openai_compatible_defaults(self, MockModel):
         db = _db_model(
@@ -441,7 +513,7 @@ class TestCreateInnerModelOpenAICompatible(unittest.TestCase):
 
 class TestCreateInnerModelGenericHTTP(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_generic_http.GenericHttpModel",
+        "switch_trust.eval.core.models.model_generic_http.GenericHttpModel",
     )
     def test_creates_generic_http_model(self, MockModel):
         db = _db_model(
@@ -463,7 +535,7 @@ class TestCreateInnerModelGenericHTTP(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_generic_http.GenericHttpModel",
+        "switch_trust.eval.core.models.model_generic_http.GenericHttpModel",
     )
     def test_generic_http_defaults(self, MockModel):
         db = _db_model(
@@ -480,7 +552,7 @@ class TestCreateInnerModelGenericHTTP(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_generic_http.GenericHttpModel",
+        "switch_trust.eval.core.models.model_generic_http.GenericHttpModel",
     )
     def test_generic_http_strips_trailing_slash(self, MockModel):
         db = _db_model(
@@ -501,7 +573,7 @@ class TestCreateInnerModelGenericHTTP(unittest.TestCase):
 
 class TestCreateInnerModelLangServe(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_langserve.LangServeModel",
+        "switch_trust.eval.core.models.model_langserve.LangServeModel",
     )
     def test_creates_langserve_model(self, MockModel):
         db = _db_model(
@@ -520,7 +592,7 @@ class TestCreateInnerModelLangServe(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_langserve.LangServeModel",
+        "switch_trust.eval.core.models.model_langserve.LangServeModel",
     )
     def test_langserve_defaults(self, MockModel):
         db = _db_model(
@@ -546,7 +618,7 @@ class TestCreateInnerModelUnknown(unittest.TestCase):
 
 class TestEnvVarResolution(unittest.TestCase):
     @patch(
-        "flintai.eval.core.models.model_anthropic.AnthropicModel",
+        "switch_trust.eval.core.models.model_anthropic.AnthropicModel",
     )
     @patch("anthropic.AsyncAnthropic")
     @patch.dict(
@@ -569,7 +641,7 @@ class TestEnvVarResolution(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_openai.OpenAIModel",
+        "switch_trust.eval.core.models.model_openai.OpenAIModel",
     )
     @patch("openai.AsyncOpenAI")
     @patch.dict(
@@ -592,7 +664,7 @@ class TestEnvVarResolution(unittest.TestCase):
         )
 
     @patch(
-        "flintai.eval.core.models.model_generic_http.GenericHttpModel",
+        "switch_trust.eval.core.models.model_generic_http.GenericHttpModel",
     )
     @patch.dict(
         "os.environ",

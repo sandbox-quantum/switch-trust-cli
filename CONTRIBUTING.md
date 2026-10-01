@@ -1,6 +1,6 @@
-# Contributing to Flint AI
+# Contributing to Switch Trust
 
-Thank you for your interest in Flint AI! We appreciate you taking the time to look into how you can help.
+Thank you for your interest in Switch Trust! We appreciate you taking the time to look into how you can help.
 
 ## Contribution policy
 
@@ -12,7 +12,7 @@ This is not a reflection on the quality of any contribution — it allows us to 
 
 We welcome and encourage:
 
-- **Bug reports** — If you find a bug, please [open an issue](https://github.com/sandbox-quantum/flintai-cli/issues/new). Include steps to reproduce, expected behavior, and any relevant logs or output.
+- **Bug reports** — If you find a bug, please [open an issue](https://github.com/sandbox-quantum/switch-trust/issues/new). Include steps to reproduce, expected behavior, and any relevant logs or output.
 - **Feature requests** — Have an idea for an improvement? Open an issue describing the use case and what you'd like to see.
 - **Questions and discussions** — If something is unclear or you'd like to discuss a topic, feel free to open an issue.
 

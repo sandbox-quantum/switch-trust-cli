@@ -2,17 +2,17 @@ import asyncio
 import unittest
 from unittest.mock import MagicMock
 
-from flintai.eval.core.eval.evaluation import (
+from switch_trust.eval.core.eval.evaluation import (
     Evaluation,
     EvaluationResult,
     EvaluationStatus,
     EvaluationSummary,
 )
-from flintai.eval.core.eval.evaluation_multi import (
+from switch_trust.eval.core.eval.evaluation_multi import (
     MAX_CONSECUTIVE_FAILURES,
     MultiEvaluation,
 )
-from flintai.eval.core.models.model import Model
+from switch_trust.eval.core.models.model import Model
 
 
 class StubMultiEvaluation(MultiEvaluation):
@@ -237,6 +237,41 @@ class TestMultiEvaluation(unittest.TestCase):
 
         self.assertEqual(multi.status, EvaluationStatus.ERROR)
 
+    def test_below_min_success_rate_names_the_shortfall(self):
+        children = [GracefulChild(should_fail=True), GracefulChild(should_fail=False)]
+        multi = StubMultiEvaluation(children=children)
+        asyncio.run(multi.init())
+        model = MagicMock(spec=Model)
+
+        asyncio.run(multi.run(model, concurrency=1))
+
+        # Reported as a shortfall, not as "no results" -- one prompt did score.
+        self.assertEqual(
+            multi.error_message,
+            "only 1 of 2 prompts succeeded (50.0%), below the 90.0% minimum",
+        )
+
+    def test_every_prompt_failing_says_so(self):
+        children = [GracefulChild(should_fail=True), GracefulChild(should_fail=True)]
+        multi = StubMultiEvaluation(children=children)
+        asyncio.run(multi.init())
+        model = MagicMock(spec=Model)
+
+        asyncio.run(multi.run(model, concurrency=1))
+
+        self.assertEqual(multi.status, EvaluationStatus.ERROR)
+        self.assertEqual(multi.error_message, "all 2 prompts failed")
+
+    def test_no_prompts_says_so(self):
+        multi = StubMultiEvaluation(children=[])
+        asyncio.run(multi.init())
+        model = MagicMock(spec=Model)
+
+        asyncio.run(multi.run(model, concurrency=1))
+
+        self.assertEqual(multi.status, EvaluationStatus.ERROR)
+        self.assertEqual(multi.error_message, "evaluation had no prompts to run")
+
     def test_meets_min_success_rate_finishes(self):
         # 9 of 10 succeed (90%) >= default 0.9 -> FINISHED.
         children = [GracefulChild(should_fail=(i == 0)) for i in range(10)]
@@ -276,7 +311,7 @@ class TestMultiEvaluation(unittest.TestCase):
         model = MagicMock(spec=Model)
 
         with self.assertLogs(
-            "flintai.eval.core.eval.evaluation_multi", level="WARNING"
+            "switch_trust.eval.core.eval.evaluation_multi", level="WARNING"
         ) as logs:
             asyncio.run(multi.run(model, concurrency=1))
 

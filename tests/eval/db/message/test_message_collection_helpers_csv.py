@@ -1,10 +1,10 @@
 import unittest
 from unittest.mock import patch
 
-from flintai.eval.db.base.message.message_collection_helpers import (
+from switch_trust.eval.db.base.message.message_collection_helpers import (
     create_message_collection,
 )
-from flintai.eval.db.base.message.message_collection_types import (
+from switch_trust.eval.db.base.message.message_collection_types import (
     DbMessageCollection,
     MessageCollectionType,
 )
@@ -12,7 +12,7 @@ from flintai.eval.db.base.message.message_collection_types import (
 
 class TestCreateCSV(unittest.TestCase):
     @patch(
-        "flintai.eval.core.message.message_collection_csv.CsvMessageCollection",
+        "switch_trust.eval.core.message.message_collection_csv.CsvMessageCollection",
     )
     def test_creates_with_filename_and_column(self, MockCSV):
         db = DbMessageCollection(
@@ -30,7 +30,7 @@ class TestCreateCSV(unittest.TestCase):
         self.assertEqual(result, MockCSV.return_value)
 
     @patch(
-        "flintai.eval.core.message.message_collection_csv.CsvMessageCollection",
+        "switch_trust.eval.core.message.message_collection_csv.CsvMessageCollection",
     )
     def test_defaults_column_to_prompt(self, MockCSV):
         db = DbMessageCollection(

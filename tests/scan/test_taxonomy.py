@@ -4,7 +4,7 @@ Tests for taxonomy.py — OWASP ASI taxonomy lookups.
 
 import unittest
 
-from flintai.scan.taxonomy import (
+from switch_trust.scan.taxonomy import (
     AGENT_TAXONOMY,
     BEYOND_ASI_SENTINEL,
     FLAT_TAXONOMY,

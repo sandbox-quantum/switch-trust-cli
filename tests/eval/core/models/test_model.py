@@ -1,8 +1,8 @@
 import asyncio
 import unittest
 
-from flintai.eval.common.schema import Content, Message, Part, PartType, Role
-from flintai.eval.core.models.model import (
+from switch_trust.eval.common.schema import Content, Message, Part, PartType, Role
+from switch_trust.eval.core.models.model import (
     Model,
     ModelResponse,
     ResponseStatus,

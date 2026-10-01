@@ -5,8 +5,8 @@ from openai.types.chat import ChatCompletionMessage
 from openai.types.chat.chat_completion import ChatCompletion, Choice
 from pydantic import BaseModel
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model_litellm import LiteLLMModel
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model_litellm import LiteLLMModel
 
 
 class _Score(BaseModel):
@@ -30,7 +30,7 @@ def _make_completion(text: str) -> ChatCompletion:
 
 
 class TestLiteLLMModel(unittest.IsolatedAsyncioTestCase):
-    @patch("flintai.eval.core.models.model_litellm.litellm")
+    @patch("switch_trust.eval.core.models.model_litellm.litellm")
     async def test_generate_text(self, mock_litellm):
         mock_litellm.acompletion = AsyncMock(return_value=_make_completion("Hello!"))
 
@@ -43,7 +43,7 @@ class TestLiteLLMModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp.message.content.parts[0].text, "Hello!")
         mock_litellm.acompletion.assert_called_once()
 
-    @patch("flintai.eval.core.models.model_litellm.litellm")
+    @patch("switch_trust.eval.core.models.model_litellm.litellm")
     async def test_generate_passes_kwargs(self, mock_litellm):
         mock_litellm.acompletion = AsyncMock(return_value=_make_completion("Hi"))
 
@@ -54,7 +54,7 @@ class TestLiteLLMModel(unittest.IsolatedAsyncioTestCase):
         call_kwargs = mock_litellm.acompletion.call_args
         self.assertEqual(call_kwargs.kwargs["temperature"], 0.3)
 
-    @patch("flintai.eval.core.models.model_litellm.litellm")
+    @patch("switch_trust.eval.core.models.model_litellm.litellm")
     async def test_output_schema_sets_response_format(self, mock_litellm):
         mock_litellm.acompletion = AsyncMock(return_value=_make_completion("Hi"))
 
@@ -65,7 +65,7 @@ class TestLiteLLMModel(unittest.IsolatedAsyncioTestCase):
         call_kwargs = mock_litellm.acompletion.call_args
         self.assertIs(call_kwargs.kwargs["response_format"], _Score)
 
-    @patch("flintai.eval.core.models.model_litellm.litellm")
+    @patch("switch_trust.eval.core.models.model_litellm.litellm")
     async def test_model_name_passed(self, mock_litellm):
         mock_litellm.acompletion = AsyncMock(return_value=_make_completion("Hi"))
 

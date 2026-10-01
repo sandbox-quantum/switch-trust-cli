@@ -3,8 +3,8 @@ import unittest
 from anthropic.types import Message as AnthropicMessage
 from anthropic.types import TextBlock, ThinkingBlock, ToolUseBlock, Usage
 
-from flintai.eval.common import converter_anthropic as anthropic_converter
-from flintai.eval.common.schema import (
+from switch_trust.eval.common import converter_anthropic as anthropic_converter
+from switch_trust.eval.common.schema import (
     Content,
     Part,
     PartType,

@@ -3,7 +3,7 @@ import unittest
 from types import ModuleType
 from unittest.mock import patch
 
-from flintai.eval.core.optional_deps import (
+from switch_trust.eval.core.optional_deps import (
     require_garak,
     require_transformers_pipeline,
 )
@@ -17,7 +17,7 @@ class TestRequireTransformersPipeline(unittest.TestCase):
         with patch.dict(sys.modules, {"transformers": None}):
             with self.assertRaises(ImportError) as ctx:
                 require_transformers_pipeline()
-        self.assertIn("flintai-cli[full]", str(ctx.exception))
+        self.assertIn("switch-trust-cli[full]", str(ctx.exception))
 
     def test_present_returns_pipeline(self):
         self.assertTrue(callable(require_transformers_pipeline()))
@@ -28,7 +28,7 @@ class TestRequireGarak(unittest.TestCase):
         with patch.dict(sys.modules, {"garak": None}):
             with self.assertRaises(ImportError) as ctx:
                 require_garak()
-        self.assertIn("flintai-cli[full]", str(ctx.exception))
+        self.assertIn("switch-trust-cli[full]", str(ctx.exception))
 
     def test_present_returns_module(self):
         garak = require_garak()

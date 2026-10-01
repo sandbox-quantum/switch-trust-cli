@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import BaseModel
 
-from flintai.eval.core.models import generator_model
-from flintai.eval.core.models.generator_model import (
+from switch_trust.eval.core.models import generator_model
+from switch_trust.eval.core.models.generator_model import (
     GeneratorConfig,
     VertexConfig,
 )
@@ -199,7 +199,7 @@ class TestGeneratorModel(unittest.IsolatedAsyncioTestCase):
         model = generator_model.GeneratorModel(inner)
 
         with self.assertLogs(
-            "flintai.eval.core.models.generator_model", level="WARNING"
+            "switch_trust.eval.core.models.generator_model", level="WARNING"
         ) as logs:
             await model.generate("hi")
         self.assertTrue(any("output_schema" in line for line in logs.output))
@@ -211,7 +211,7 @@ class TestGeneratorModel(unittest.IsolatedAsyncioTestCase):
         model = generator_model.GeneratorModel(inner)
 
         with self.assertNoLogs(
-            "flintai.eval.core.models.generator_model", level="WARNING"
+            "switch_trust.eval.core.models.generator_model", level="WARNING"
         ):
             await model.generate("hi", output_schema=_Score)
         # The schema is forwarded to the wrapped model.
@@ -222,7 +222,7 @@ class TestGeneratorModel(unittest.IsolatedAsyncioTestCase):
 class TestCreateInner(unittest.TestCase):
     def test_gemini(self):
         with patch(
-            "flintai.eval.core.models.model_gemini.GeminiModel"
+            "switch_trust.eval.core.models.model_gemini.GeminiModel"
         ) as mock_model:
             with patch("google.genai.Client") as mock_client:
                 result = generator_model._create_inner(
@@ -234,7 +234,7 @@ class TestCreateInner(unittest.TestCase):
 
     def test_openai(self):
         with patch(
-            "flintai.eval.core.models.model_openai.OpenAIModel"
+            "switch_trust.eval.core.models.model_openai.OpenAIModel"
         ) as mock_model:
             with patch("openai.AsyncOpenAI") as mock_client:
                 result = generator_model._create_inner(_config("openai", "gpt-4o"))
@@ -244,7 +244,7 @@ class TestCreateInner(unittest.TestCase):
 
     def test_anthropic(self):
         with patch(
-            "flintai.eval.core.models.model_anthropic.AnthropicModel"
+            "switch_trust.eval.core.models.model_anthropic.AnthropicModel"
         ) as mock_model:
             with patch("anthropic.AsyncAnthropic") as mock_client:
                 result = generator_model._create_inner(
@@ -256,7 +256,7 @@ class TestCreateInner(unittest.TestCase):
 
     def test_litellm(self):
         with patch(
-            "flintai.eval.core.models.model_litellm.LiteLLMModel"
+            "switch_trust.eval.core.models.model_litellm.LiteLLMModel"
         ) as mock_model:
             result = generator_model._create_inner(_config("litellm", "gpt-4o"))
             mock_model.assert_called_once_with("gpt-4o")
@@ -264,7 +264,7 @@ class TestCreateInner(unittest.TestCase):
 
     def test_ollama(self):
         with patch(
-            "flintai.eval.core.models.model_ollama.OllamaModel"
+            "switch_trust.eval.core.models.model_ollama.OllamaModel"
         ) as mock_model:
             result = generator_model._create_inner(_config("ollama", "llama3"))
             mock_model.assert_called_once_with("llama3")

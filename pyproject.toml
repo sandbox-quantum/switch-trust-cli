@@ -1,12 +1,12 @@
 [project]
-name = "flintai-cli"
-version = "1.6.1"
-description = "Command-line tool for evaluating agents, offering two features to assess agents via code scanning (`flintai scan`, whitebox testing) and runtime evaluation (`flintai eval`, blackbox testing)"
+name = "switch-trust-cli"
+version = "1.7.0"
+description = "Command-line tool for evaluating agents, offering two features to assess agents via code scanning (`switch-trust scan`, whitebox testing) and runtime evaluation (`switch-trust eval`, blackbox testing)"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [
-  { name = "SandboxAQ", email = "info@flintai.dev" },
+  { name = "SandboxAQ", email = "info@switchagents.ai" },
 ]
 dependencies = [
   "aiohttp>=3.14.3",
@@ -52,7 +52,7 @@ dependencies = [
 # and detectors; ``transformers[torch]`` powers toxicity detection and the
 # local evaluation of models retrieved from HuggingFace (torch alone is ~2 GB
 # and also pulls in Cuda on Linux). Install with
-# ``pip install flintai-cli[full]``.
+# ``pip install switch-trust-cli[full]``.
 full = [
   "garak==0.14.0",
   "transformers[torch]==5.10.1",
@@ -72,10 +72,10 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["flintai*"]
+include = ["switch_trust*"]
 
 [tool.setuptools.package-data]
-flintai = [
+switch_trust = [
     "**/*.json",
     "**/*.yaml",
     "**/*.yml",
@@ -84,8 +84,10 @@ flintai = [
 ]
 
 [project.scripts]
-flintai = "flintai.cli.main:main"
+switch-trust = "switch_trust.cli.main:main"
 
+# TODO(rebrand): these point at the intended new repo, which doesn't exist yet.
+# Update once sandbox-quantum/switch-trust is created.
 [project.urls]
-Homepage = "https://github.com/sandbox-quantum/flintai-cli"
-Issues = "https://github.com/sandbox-quantum/flintai-cli/issues"
+Homepage = "https://github.com/sandbox-quantum/switch-trust"
+Issues = "https://github.com/sandbox-quantum/switch-trust/issues"

@@ -23,8 +23,8 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 
-import flintai.cli.main as main_mod
-import flintai.cli.telemetry as telemetry
+import switch_trust.cli.main as main_mod
+import switch_trust.cli.telemetry as telemetry
 
 # A value that stands in for the kinds of user-controlled / sensitive content
 # that must never leave the process: absolute file paths, prompts, provider
@@ -68,8 +68,8 @@ class _InMemoryTelemetry:
         self.metric_reader = InMemoryMetricReader()
         self.meter_provider = MeterProvider(metric_readers=[self.metric_reader])
         meter = self.meter_provider.get_meter("test")
-        self.counter = meter.create_counter("flintai.cli.command")
-        self.histogram = meter.create_histogram("flintai.cli.command.duration")
+        self.counter = meter.create_counter("switch_trust.cli.command")
+        self.histogram = meter.create_histogram("switch_trust.cli.command.duration")
 
         self.tracer_provider = TracerProvider()
         self.tracer_provider.add_span_processor(
@@ -122,14 +122,14 @@ def inmem() -> _InMemoryTelemetry:
 class TestAttributeAllowlist:
     def test_sanitize_drops_disallowed_keys_and_their_values(self):
         attrs = {
-            "flint.command": "scan",
+            "switch_trust.command": "scan",
             "exception.message": _SECRET,
             "arbitrary.injected": _SECRET,
         }
 
         out = telemetry._sanitize(attrs, telemetry._ALLOWED_LOG_ATTRIBUTES)
 
-        assert out == {"flint.command": "scan"}
+        assert out == {"switch_trust.command": "scan"}
         assert _SECRET not in "".join(str(v) for v in out.values())
 
     def test_span_path_strips_disallowed_key_and_exception_message(self, inmem):
@@ -163,14 +163,14 @@ class TestAttributeAllowlist:
 
         attrs = inmem.log_attributes()
 
-        assert attrs["flint.command"] == "eval"
-        assert attrs["flint.subcommand"] == "models list"
-        assert attrs["flint.is_ci"] is True
-        assert attrs["flint.is_first_time"] is True
-        assert attrs["flint.client_id"] == "test-client-id"
-        assert attrs["flint.status"] == "ok"
+        assert attrs["switch_trust.command"] == "eval"
+        assert attrs["switch_trust.subcommand"] == "models list"
+        assert attrs["switch_trust.is_ci"] is True
+        assert attrs["switch_trust.is_first_time"] is True
+        assert attrs["switch_trust.client_id"] == "test-client-id"
+        assert attrs["switch_trust.status"] == "ok"
         assert attrs["status"] == "ok"
-        assert "flint.duration_ms" in attrs
+        assert "switch_trust.duration_ms" in attrs
         # Every exported key is on the allowlist.
         assert set(attrs) <= telemetry._ALLOWED_LOG_ATTRIBUTES
 
@@ -180,8 +180,8 @@ class TestAttributeAllowlist:
         attrs = inmem.log_attributes()
 
         assert set(attrs) <= telemetry._ALLOWED_LOG_ATTRIBUTES
-        assert attrs["flint.command"] == "init"
-        assert attrs["flint.status"] == "ok"
+        assert attrs["switch_trust.command"] == "init"
+        assert attrs["switch_trust.status"] == "ok"
 
     def test_metric_path_only_exports_allowlisted_keys(self, inmem):
         with telemetry.command_span("scan", subcommand=None):
@@ -200,7 +200,7 @@ class TestAttributeAllowlist:
             {
                 "service.name",
                 "service.version",
-                "flint.client_id",
+                "switch_trust.client_id",
                 "python.version",
                 "os.type",
                 "os.version",
@@ -307,9 +307,9 @@ def _configure_main_env(monkeypatch, tmp_path, *, consent):
     monkeypatch.setattr(main_mod, "get_telemetry_consent", lambda: consent)
     monkeypatch.setattr(main_mod, "get_client_id", lambda: "test-client-id")
 
-    env = tmp_path / ".flintai.env"
+    env = tmp_path / ".switch-trust.env"
     env.write_text("")
-    monkeypatch.setattr(main_mod.init_cli, "get_flintai_env_path", lambda: env)
+    monkeypatch.setattr(main_mod.init_cli, "get_switch_trust_env_path", lambda: env)
 
 
 def _set_dispatch(monkeypatch, *, result=None, exc=None):

@@ -1,12 +1,12 @@
 import unittest
 
-from flintai.eval.core.message.message_collection_memory import (
+from switch_trust.eval.core.message.message_collection_memory import (
     InMemoryMessageCollection,
 )
-from flintai.eval.db.base.message.message_collection_helpers import (
+from switch_trust.eval.db.base.message.message_collection_helpers import (
     create_message_collection,
 )
-from flintai.eval.db.base.message.message_collection_types import (
+from switch_trust.eval.db.base.message.message_collection_types import (
     DbMessageCollection,
     MessageCollectionType,
 )

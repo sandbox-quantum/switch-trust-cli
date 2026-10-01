@@ -1,9 +1,9 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model import ModelResponse
-from flintai.eval.core.models.model_sync_wrapper import SyncModelWrapper
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model_sync_wrapper import SyncModelWrapper
 
 
 class TestSyncModelWrapper(unittest.TestCase):

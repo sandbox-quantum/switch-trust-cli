@@ -1,16 +1,16 @@
 import unittest
 from unittest.mock import AsyncMock
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.detectors.detector_model import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.detectors.detector_model import (
     _EVIDENCE_END,
     _EVIDENCE_START,
 )
-from flintai.eval.core.detectors.detector_model_adversarial import (
+from switch_trust.eval.core.detectors.detector_model_adversarial import (
     AdversarialModelDetector,
     DetectorLLMResponse,
 )
-from flintai.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model import ModelResponse
 
 
 def _model_returning(text: str) -> AsyncMock:

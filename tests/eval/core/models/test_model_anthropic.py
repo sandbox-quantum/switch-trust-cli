@@ -5,9 +5,9 @@ from anthropic.types import Message as AnthropicMessage
 from anthropic.types import TextBlock, ToolUseBlock, Usage
 from pydantic import BaseModel
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.models.model_anthropic import AnthropicModel
-from flintai.eval.core.models.response_schema import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.models.model_anthropic import AnthropicModel
+from switch_trust.eval.core.models.response_schema import (
     STRUCTURED_OUTPUT_TOOL_NAME,
 )
 

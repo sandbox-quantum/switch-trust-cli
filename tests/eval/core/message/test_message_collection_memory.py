@@ -1,7 +1,7 @@
 import unittest
 
-from flintai.eval.common.schema import Content, Message, Role
-from flintai.eval.core.message.message_collection_memory import (
+from switch_trust.eval.common.schema import Content, Message, Role
+from switch_trust.eval.core.message.message_collection_memory import (
     InMemoryMessageCollection,
 )
 

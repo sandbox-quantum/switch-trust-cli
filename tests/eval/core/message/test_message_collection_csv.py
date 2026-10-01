@@ -3,8 +3,8 @@ import os
 import tempfile
 import unittest
 
-from flintai.eval.common.schema import Role
-from flintai.eval.core.message.message_collection_csv import CsvMessageCollection
+from switch_trust.eval.common.schema import Role
+from switch_trust.eval.core.message.message_collection_csv import CsvMessageCollection
 
 
 class TestCsvMessageCollection(unittest.TestCase):
