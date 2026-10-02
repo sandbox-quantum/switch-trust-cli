@@ -1,6 +1,6 @@
 [project]
 name = "switch-trust-cli"
-version = "1.7.0"
+version = "1.7.1"
 description = "Command-line tool for evaluating agents, offering two features to assess agents via code scanning (`switch-trust scan`, whitebox testing) and runtime evaluation (`switch-trust eval`, blackbox testing)"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -89,5 +89,5 @@ switch-trust = "switch_trust.cli.main:main"
 # TODO(rebrand): these point at the intended new repo, which doesn't exist yet.
 # Update once sandbox-quantum/switch-trust is created.
 [project.urls]
-Homepage = "https://github.com/sandbox-quantum/switch-trust"
-Issues = "https://github.com/sandbox-quantum/switch-trust/issues"
+Homepage = "https://github.com/sandbox-quantum/switch-trust-cli"
+Issues = "https://github.com/sandbox-quantum/switch-trust-cli/issues"
