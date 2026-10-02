@@ -1,10 +1,13 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/switch-trust-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/switch-trust-light.png">
-  <img src="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/switch-trust-light.png" alt="Switch Trust" width="450">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/switch_ai_full_logo_light.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/switch_ai_full_logo_dark.svg">
+  <img src="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/switch_ai_full_logo_dark.svg" alt="Switch Trust" width="350">
 </picture>
+<h1>
+  Trust CLI
+</h1>
 
 [![PyPI version](https://img.shields.io/pypi/v/switch-trust-cli?color=A1C9D2&logo=pypi&logoColor=white)](https://pypi.org/project/switch-trust-cli/) [![Python](https://img.shields.io/badge/python-3.11+-A1C9D2?logo=python&logoColor=white)](https://www.python.org/downloads/) [![Documentation](https://img.shields.io/badge/docs-docs.switchagents.ai-FF895E)](https://docs.switchagents.ai) [![Website](https://img.shields.io/badge/website-switchagents.ai-FF895E)](https://switchagents.ai)
 
@@ -105,7 +108,7 @@ The included `examples/config.json` has both agents configured with builtin eval
 switch-trust scan examples/bookstore_agent/
 ```
 
-<img src="https://raw.githubusercontent.com/sandbox-quantum/switch-trust/main/images/scan-findings.png" alt="Scan results showing security findings" width="550">
+<img src="https://raw.githubusercontent.com/sandbox-quantum/switch-trust-cli/main/images/scan-findings.png" alt="Scan results showing security findings" width="550">
 
 *Example: Scan found 2 security issues - High severity missing authentication and Medium severity unbounded execution loop*
 
