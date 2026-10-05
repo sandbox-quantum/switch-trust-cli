@@ -1,6 +1,6 @@
 [project]
 name = "switch-trust-cli"
-version = "1.7.1"
+version = "1.7.2"
 description = "Command-line tool for evaluating agents, offering two features to assess agents via code scanning (`switch-trust scan`, whitebox testing) and runtime evaluation (`switch-trust eval`, blackbox testing)"
 readme = "README.md"
 license = { file = "LICENSE" }
