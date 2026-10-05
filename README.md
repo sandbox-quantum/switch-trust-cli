@@ -90,7 +90,7 @@ You'll be prompted to select a provider (Gemini, OpenAI, Anthropic, or LiteLLM),
 
 ### Step 3: Try the example agents
 
-To demonstrate the CLIs capabilities, we've shipped this tool with two example agents. You can get them [here](https://github.com/sandbox-quantum/switch-trust/tree/main/examples).
+To demonstrate the CLIs capabilities, we've shipped this tool with two example agents. You can get them [here](https://github.com/sandbox-quantum/switch-trust-cli/tree/main/examples).
 
 **Both agents work with both `switch-trust scan` and `switch-trust eval`**:
 
@@ -237,11 +237,11 @@ Switch Trust CLI collects **anonymous usage analytics** to help us understand ho
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+See [CONTRIBUTING.md](https://github.com/sandbox-quantum/switch-trust-cli/blob/main/CONTRIBUTING.md) for details.
 
 ## License
 
-Free to use - [full license](LICENSE).
+Free to use - [full license](https://github.com/sandbox-quantum/switch-trust-cli/blob/main/LICENSE).
 
 ## Contact
 
