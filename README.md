@@ -1,3 +1,12 @@
+> [!CAUTION]
+> **Deprecation note**: `flintai-cli` is no longer maintained and has been superseded by [`switch-trust-cli`](https://github.com/sandbox-quantum/switch-trust-cli).\
+> Install: `pip install switch-trust-cli`.\
+> Usage: Replace `flintai <command>` with `switch-trust <command>`.
+
+<br/>
+<br/>
+<br/>
+
 <div align="center">
 
 <picture>
