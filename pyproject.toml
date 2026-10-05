@@ -1,6 +1,6 @@
 [project]
 name = "flintai-cli"
-version = "1.6.1"
+version = "1.6.2"
 description = "Command-line tool for evaluating agents, offering two features to assess agents via code scanning (`flintai scan`, whitebox testing) and runtime evaluation (`flintai eval`, blackbox testing)"
 readme = "README.md"
 license = { file = "LICENSE" }
