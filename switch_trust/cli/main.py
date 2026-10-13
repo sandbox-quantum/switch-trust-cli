@@ -301,9 +301,9 @@ def main(argv: list[str] | None = None) -> None:
     is_first_time = not switch_trust_env.exists()
 
     if is_first_time and args.command != "init":
-        if ci:
+        if ci or not sys.stdin.isatty():
             console.print(
-                "[dim]CI environment detected — skipping interactive init.[/dim]",
+                "[dim]Non-interactive environment detected — skipping interactive init.[/dim]",
             )
         else:
             console.print(

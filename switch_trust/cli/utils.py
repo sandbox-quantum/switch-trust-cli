@@ -3,6 +3,7 @@
 import logging
 import os
 import stat
+import sys
 import uuid
 from pathlib import Path
 
@@ -140,11 +141,19 @@ def prompt_telemetry_consent() -> str:
     return "true" if choice.lower() == "y" else "false"
 
 
+def _is_interactive() -> bool:
+    """True when stdin is an interactive terminal, not piped or closed."""
+    try:
+        return sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
 def ensure_telemetry_consent() -> None:
     if resolve_env_var(TELEMETRY_CONSENT_ENV_VAR):
         return
 
-    if is_ci():
+    if is_ci() or not _is_interactive():
         os.environ[TELEMETRY_CONSENT_ENV_VAR] = "false"
         return
 

@@ -101,6 +101,9 @@ def select(
         while True:
             ch = sys.stdin.read(1)
 
+            if not ch:
+                break
+
             if ch == "\r" or ch == "\n":
                 break
 
