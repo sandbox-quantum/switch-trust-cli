@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from switch_trust.eval.common.schema import Content, Message, PartType, Role
 from switch_trust.eval.core.detectors.detector import Detector, DetectorResult
 from switch_trust.eval.core.models.model import Model, ModelResponse
+from switch_trust.eval.core.models.model_errors import mark_generator_failure
 from switch_trust.eval.core.models.response_schema import parse_model_response
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,18 @@ class ModelDetector(Detector):
             # An unparseable verdict is an absence of evidence, not a 0.0 (which
             # is reserved for a genuinely unsafe response). Raise so the leaf
             # errors and drops out of scoring instead of recording a false zero.
-            raise ValueError("ModelDetector: judge returned no parseable score")
+            #
+            # This is always our judge's failure, never the tenant's: `model`
+            # is always the internal generator/judge (see detector_helpers.py),
+            # and by the time we get here its own generate() call already
+            # returned without raising, so GeneratorModel's generator_scope()
+            # has already unwound and cannot stamp this exception itself.
+            exc = ValueError(
+                "ModelDetector: judge returned no parseable score "
+                f"(status={result.status.name})"
+            )
+            mark_generator_failure(exc)
+            raise exc
         logger.debug("ModelDetector: score=%.2f", score)
         return DetectorResult(score=score)
 

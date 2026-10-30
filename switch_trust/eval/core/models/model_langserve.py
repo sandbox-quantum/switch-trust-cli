@@ -15,7 +15,6 @@ Response format::
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -36,16 +35,12 @@ if TYPE_CHECKING:
 class LangServeModel(Model):
     _url: str
     _headers: dict[str, str]
-    # Optional aiohttp connector factory; the worker passes the SSRF-guarded one
-    # (platform/ssrf.py). None keeps the default connector.
-    _connector_factory: Callable[[], aiohttp.BaseConnector] | None
 
     def __init__(
         self,
         base_url: str,
         chain_path: str = "",
         headers: dict[str, str] | None = None,
-        connector_factory: Callable[[], aiohttp.BaseConnector] | None = None,
     ):
         base = base_url.rstrip("/")
         path = chain_path.strip("/")
@@ -54,7 +49,6 @@ class LangServeModel(Model):
         else:
             self._url = f"{base}/invoke"
         self._headers = headers or {}
-        self._connector_factory = connector_factory
 
     async def _generate(
         self,
@@ -67,8 +61,7 @@ class LangServeModel(Model):
         # output_schema is accepted for interface parity and ignored.
         prompt_text = flatten_messages(messages)
 
-        connector = self._connector_factory() if self._connector_factory else None
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with aiohttp.ClientSession() as session:
             async with session.post(
                 self._url,
                 json={"input": prompt_text},

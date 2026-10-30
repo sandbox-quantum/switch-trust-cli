@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -88,8 +87,6 @@ class VertexAgentRuntimeModel(Model):
         immediate_result: If True, return the first event's text (e.g. a tool
             call). If False (default), return the final text response after all
             tool calls complete.
-        connector_factory: Optional aiohttp connector factory; the worker passes
-            the SSRF-guarded one (platform/ssrf.py).
     """
 
     _url: str
@@ -97,7 +94,6 @@ class VertexAgentRuntimeModel(Model):
     _user_id: str
     _class_method: str
     _immediate_result: bool
-    _connector_factory: Callable[[], aiohttp.BaseConnector] | None
     # Set when the credential was a service-account key; None when a raw access
     # token (or nothing) was supplied.
     _google_credentials: Any | None
@@ -112,14 +108,12 @@ class VertexAgentRuntimeModel(Model):
         user_id: str = DEFAULT_USER_ID,
         class_method: str = DEFAULT_CLASS_METHOD,
         immediate_result: bool = False,
-        connector_factory: Callable[[], aiohttp.BaseConnector] | None = None,
     ):
         self._url = url
         self._headers = dict(headers or {})
         self._user_id = user_id
         self._class_method = class_method
         self._immediate_result = immediate_result
-        self._connector_factory = connector_factory
         self._google_credentials = _service_account_credentials(credential)
         self._static_token = (
             credential if credential and self._google_credentials is None else None
@@ -177,8 +171,7 @@ class VertexAgentRuntimeModel(Model):
         }
         headers = {**self._headers, **await self._auth_headers()}
 
-        connector = self._connector_factory() if self._connector_factory else None
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with aiohttp.ClientSession() as session:
             async with session.post(
                 self._url,
                 json=payload,

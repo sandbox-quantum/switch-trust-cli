@@ -10,7 +10,6 @@ Typical ADK server URL: ``http://localhost:8000``
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -47,16 +46,12 @@ class ADKModel(Model):
         user_id: str = "aired",
         immediate_result: bool = False,
         headers: dict[str, str] | None = None,
-        connector_factory: Callable[[], aiohttp.BaseConnector] | None = None,
     ):
         self._app_name = app_name
         self._host = host.rstrip("/")
         self._user_id = user_id
         self._immediate_result = immediate_result
         self._headers = headers or {}
-        # Optional aiohttp connector factory; the worker passes the SSRF-guarded
-        # one (platform/ssrf.py). None keeps the default connector.
-        self._connector_factory = connector_factory
 
     async def _create_session(
         self,
@@ -83,8 +78,7 @@ class ADKModel(Model):
                 "ADKModel does not support multiple messages; use session-based history"
             )
 
-        connector = self._connector_factory() if self._connector_factory else None
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with aiohttp.ClientSession() as session:
             session_id = await self._create_session(session)
 
             text_parts = [p.text for p in messages[0].content.parts if p.text]

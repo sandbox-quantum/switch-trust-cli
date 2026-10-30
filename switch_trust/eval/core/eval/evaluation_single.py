@@ -12,7 +12,12 @@ from switch_trust.eval.core.eval.evaluation import (
     EvaluationStatus,
     EvaluationSummary,
 )
-from switch_trust.eval.core.models.model import Model
+from switch_trust.eval.core.models.model import Model, record_model_error
+from switch_trust.eval.core.models.model_errors import (
+    classify_model_error,
+    is_generator_failure,
+    log_level_for_run_failure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +58,10 @@ class SingleEvaluation(Evaluation):
         model: Model,
         concurrency: int = 50,
         min_success_rate: float = DEFAULT_MIN_SUCCESS_RATE,
+        max_timeout: int | None = None,
     ):
-        # min_success_rate is unused for a leaf; kept to match the base signature.
+        # min_success_rate and max_timeout are unused for a leaf; kept to match
+        # the base signature.
         await self.execute(model)
 
     async def execute(self, model: Model):
@@ -70,7 +77,27 @@ class SingleEvaluation(Evaluation):
         except Exception as e:
             self.error_message = str(e)
             self.status = EvaluationStatus.ERROR
-            logger.error("%s failed (%s: %s)", name, type(e).__name__, e, exc_info=True)
+            if is_generator_failure(e):
+                # A judge/generator failure raised after its own generate()
+                # call already returned (e.g. an unparseable verdict) never
+                # passes through Model.generate()'s own accumulator recording.
+                record_model_error(
+                    e,
+                    "judge",
+                    getattr(e, "status", None),
+                    getattr(e, "error_status", None),
+                )
+            # Only a confidently tenant-caused kind should page as a warning;
+            # this scope also wraps our own detector/scoring code, so an
+            # unclassifiable failure defaults to alerting.
+            logger.log(
+                log_level_for_run_failure(classify_model_error(e)),
+                "%s failed (%s: %s)",
+                name,
+                type(e).__name__,
+                e,
+                exc_info=True,
+            )
         finally:
             self._notify_observers()
 

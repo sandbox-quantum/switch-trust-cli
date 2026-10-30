@@ -12,7 +12,8 @@ from switch_trust.eval.core.eval.evaluation_multi import (
     MAX_CONSECUTIVE_FAILURES,
     MultiEvaluation,
 )
-from switch_trust.eval.core.models.model import Model
+from switch_trust.eval.core.models.model import Model, track_model_errors
+from switch_trust.eval.core.models.model_errors import ErrorKind
 
 
 class StubMultiEvaluation(MultiEvaluation):
@@ -375,6 +376,60 @@ class TestCircuitBreaker(unittest.TestCase):
         ]
         self.assertGreater(len(aborted), 0)
 
+    def test_aborts_on_the_first_auth_failure(self):
+        # A wrong credential cannot come good by trying more prompts, and the
+        # count-based abort would not catch it here at all: successes in
+        # between keep resetting the counter.
+        children = [
+            GracefulChild(should_fail=(i % 2 == 0))
+            for i in range(MAX_CONSECUTIVE_FAILURES * 4)
+        ]
+        multi = StubMultiEvaluation(children=children)
+        asyncio.run(multi.init())
+        model = MagicMock(spec=Model)
+
+        async def run_with_auth_failure() -> None:
+            with track_model_errors() as acc:
+                acc.record_once(
+                    ValueError("401"),
+                    "GenericHttpModel",
+                    401,
+                    kind=ErrorKind.AUTH_FAILED,
+                )
+                await multi.run(model, concurrency=1)
+
+        asyncio.run(run_with_auth_failure())
+
+        aborted = [
+            c
+            for c in children
+            if (c.error_message or "").startswith("Aborted: unrecoverable failure")
+        ]
+        self.assertGreater(len(aborted), 0)
+
+    def test_our_own_judge_failure_does_not_abort_the_run(self):
+        # CHOO-2936 stamps judge/generator failures internal_error, so our bad
+        # credential must not stop the tenant's run.
+        children = [GracefulChild(should_fail=False) for _ in range(6)]
+        multi = StubMultiEvaluation(children=children)
+        asyncio.run(multi.init())
+        model = MagicMock(spec=Model)
+
+        async def run_with_judge_failure() -> None:
+            with track_model_errors() as acc:
+                acc.record_once(
+                    ValueError("401"),
+                    "GeminiModel",
+                    401,
+                    kind=ErrorKind.INTERNAL_ERROR,
+                )
+                await multi.run(model, concurrency=1)
+
+        asyncio.run(run_with_judge_failure())
+
+        aborted = [c for c in children if (c.error_message or "").startswith("Aborted")]
+        self.assertEqual(len(aborted), 0)
+
     def test_success_resets_consecutive_errors(self):
         children = []
         for i in range(MAX_CONSECUTIVE_FAILURES * 3):
@@ -391,6 +446,27 @@ class TestCircuitBreaker(unittest.TestCase):
             if c.error_message == "Aborted: too many consecutive failures"
         ]
         self.assertEqual(len(aborted), 0)
+
+
+class TestMaxTimeout(unittest.TestCase):
+    def test_cap_applies_and_marks_the_kind(self):
+        # CHOO-3580: the worker caps an attempt so the run's worst-case
+        # lifetime is bounded, and the kind is what gives it a smaller budget.
+        multi = StubMultiEvaluation(children=[FakeChild()])
+        asyncio.run(multi.init())
+
+        asyncio.run(multi.run(MagicMock(spec=Model), max_timeout=0))
+
+        self.assertEqual(multi.error_kind, ErrorKind.TIMEOUT)
+        self.assertIn("timed out after 0s", multi.error_message or "")
+
+    def test_default_keeps_the_engine_budget(self):
+        multi = StubMultiEvaluation(children=[FakeChild()])
+        asyncio.run(multi.init())
+
+        asyncio.run(multi.run(MagicMock(spec=Model)))
+
+        self.assertIsNone(multi.error_kind)
 
 
 if __name__ == "__main__":

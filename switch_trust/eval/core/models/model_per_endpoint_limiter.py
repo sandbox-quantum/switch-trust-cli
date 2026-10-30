@@ -19,7 +19,7 @@ import asyncio
 import random
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from switch_trust.eval.core.models.model import Model, ModelResponse
+from switch_trust.eval.core.models.model import Model, ModelResponse, endpoint_scope
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -67,9 +67,13 @@ class PerEndpointLimiter(Model):
         if self._jitter_max > 0:
             await asyncio.sleep(random.uniform(0, self._jitter_max))
         async with self._get_semaphore():
-            return await self._model.generate(
-                messages, output_schema=output_schema, **kwargs
-            )
+            # The inner model's own generate() records the failure first and
+            # the accumulator dedupes by id(exc), so this scope is what names
+            # the endpoint on the recording that survives.
+            with endpoint_scope(self._endpoint_url):
+                return await self._model.generate(
+                    messages, output_schema=output_schema, **kwargs
+                )
 
     @classmethod
     def _reset_state_for_testing(cls) -> None:

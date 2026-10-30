@@ -37,7 +37,6 @@ Example server::
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -57,13 +56,9 @@ class AnthropicAgentModel(Model):
         self,
         host: str = "http://localhost:8000",
         endpoint: str = "/run",
-        connector_factory: Callable[[], aiohttp.BaseConnector] | None = None,
     ):
         self._host = host.rstrip("/")
         self._endpoint = endpoint
-        # Optional aiohttp connector factory; the worker passes the SSRF-guarded
-        # one (platform/ssrf.py). None keeps the default connector.
-        self._connector_factory = connector_factory
 
     async def _generate(
         self,
@@ -79,8 +74,7 @@ class AnthropicAgentModel(Model):
         text_parts = [p.text for p in messages[0].content.parts if p.text]
         prompt_text = " ".join(text_parts)
 
-        connector = self._connector_factory() if self._connector_factory else None
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{self._host}{self._endpoint}",
                 json={"prompt": prompt_text},

@@ -15,7 +15,8 @@ from switch_trust.eval.core.eval.evaluation import (
     EvaluationStatus,
     EvaluationSummary,
 )
-from switch_trust.eval.core.models.model import Model
+from switch_trust.eval.core.models.model import Model, recorded_error_kinds
+from switch_trust.eval.core.models.model_errors import ErrorKind
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,17 @@ logger = logging.getLogger(__name__)
 PER_CHILD_TIMEOUT = 60  # seconds per child
 MIN_TIMEOUT = 30 * 60  # 30 minutes minimum
 MAX_CONSECUTIVE_FAILURES = 5
+
+# Kinds that will not come good by trying more prompts, so the run stops on the
+# first one instead of waiting for MAX_CONSECUTIVE_FAILURES.
+#
+# Deliberately just auth: a 401/403 means the stored credential is wrong, which
+# no later prompt can fix. Everything else plausibly recovers mid-run
+# (`timeout`, `unreachable`, `quota_exceeded`) and keeps the count-based abort.
+# `internal_error` is excluded on purpose rather than by omission: CHOO-2936
+# stamps our own judge/generator failures with it, and our bad credential must
+# not abort the tenant's run.
+FAIL_FAST_KINDS = frozenset({ErrorKind.AUTH_FAILED})
 
 
 @dataclass_json
@@ -127,6 +139,7 @@ class MultiEvaluation(Evaluation):
         model: Model,
         concurrency: int = 50,
         min_success_rate: float = DEFAULT_MIN_SUCCESS_RATE,
+        max_timeout: int | None = None,
     ) -> None:
         if self.status == EvaluationStatus.ERROR:
             return
@@ -135,6 +148,9 @@ class MultiEvaluation(Evaluation):
 
         semaphore = asyncio.Semaphore(concurrency)
         abort = asyncio.Event()
+        # Why the abort fired, so a skipped child says something true. The
+        # default keeps the count-based wording the existing message used.
+        abort_reason = "too many consecutive failures"
         consecutive_errors = 0
         error_lock = asyncio.Lock()
 
@@ -147,6 +163,10 @@ class MultiEvaluation(Evaluation):
             MIN_TIMEOUT,
             PER_CHILD_TIMEOUT * len(initialized),
         )
+        # Caps the budget rather than replacing it, so small evaluations keep
+        # the floor and large ones still scale (see WorkerConfig.max_run_timeout).
+        if max_timeout is not None:
+            timeout = min(timeout, max_timeout)
 
         name = type(self).__name__
         logger.debug(
@@ -157,18 +177,28 @@ class MultiEvaluation(Evaluation):
         )
 
         async def run_child(child: Evaluation) -> None:
-            nonlocal consecutive_errors
+            nonlocal consecutive_errors, abort_reason
             async with semaphore:
                 if abort.is_set():
                     child.status = EvaluationStatus.ERROR
-                    child.error_message = "Aborted: too many consecutive failures"
+                    child.error_message = f"Aborted: {abort_reason}"
                     child._notify_observers()
                     return
                 await child.run(model, concurrency)
                 async with error_lock:
                     if child.get_summary().status == EvaluationStatus.ERROR:
                         consecutive_errors += 1
-                        if consecutive_errors >= MAX_CONSECUTIVE_FAILURES:
+                        fatal = recorded_error_kinds() & FAIL_FAST_KINDS
+                        if fatal:
+                            # The count-based abort misses this case entirely:
+                            # it resets on any success, so an intermittent 401
+                            # never reaches the threshold however obviously
+                            # unrecoverable it is.
+                            kinds = ", ".join(sorted(k.value for k in fatal))
+                            abort_reason = f"unrecoverable failure ({kinds})"
+                            abort.set()
+                            logger.warning("%s: aborting on %s", name, abort_reason)
+                        elif consecutive_errors >= MAX_CONSECUTIVE_FAILURES:
                             abort.set()
                             logger.warning(
                                 "%s: aborting after %d consecutive failures",
@@ -209,6 +239,9 @@ class MultiEvaluation(Evaluation):
                         f"evaluations timed out after "
                         f"{timeout}s"
                     )
+                    # Cancelled children record no model error, so the worker
+                    # would otherwise classify this as `unknown` (CHOO-3580).
+                    self.error_kind = ErrorKind.TIMEOUT
                     logger.warning("%s: %s", name, self.error_message)
 
             if abort.is_set() and not self.error_message:

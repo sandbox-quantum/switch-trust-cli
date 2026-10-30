@@ -39,11 +39,36 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from switch_trust.cli import llm_credentials
 from switch_trust.eval.common.schema import Message
 from switch_trust.eval.core.models.model import Model, ModelResponse
+from switch_trust.eval.core.models.model_errors import generator_scope
+from switch_trust.eval.core.models.model_per_endpoint_limiter import (
+    PerEndpointLimiter,
+)
 from switch_trust.eval.core.models.model_retry import RetryModel
 
 logger = logging.getLogger(__name__)
+
+
+class GeneratorCredentialError(ValueError):
+    """The judge/generator model has no credential to authenticate with.
+
+    A distinct type rather than a message for a caller to match on: the CLI
+    maps it to ``ExitCode.AUTH_FAILED`` (20) so a missing judge key reads as
+    "fix the configuration" rather than the catch-all 1. Classification stays
+    content-free, the same rule ``model_errors`` follows — the decision is made
+    from configuration we read, never from provider text.
+
+    Raised at *construction*, which is the only place it can be: a client that
+    was never built makes no call, so nothing reaches
+    ``ModelErrorAccumulator`` and the post-run classification in
+    ``cli/eval_cli.py::_check_model_credentials`` has nothing to key on.
+
+    A ``ValueError`` subclass, so the worker's startup
+    ``GeneratorConfig.validate()`` and every other existing ``except
+    ValueError`` behave exactly as they did.
+    """
 
 
 @dataclass
@@ -103,6 +128,24 @@ class GeneratorConfig:
     # google-genai client at build time. Used by ``validate`` to insist on a
     # usable Developer-API credential when Vertex is not configured.
     gemini_api_key_present: bool = False
+    # gemini-only: whether the client will have *anything* to authenticate
+    # with. Deliberately wider than ``gemini_api_key_present``: that one asks
+    # whether a Developer-API credential was *configured*, which is the bar
+    # ``validate`` holds the worker to, while this one asks only whether
+    # ``Client()`` can be built at all — which google-genai also allows via
+    # GEMINI_API_KEY or an env-driven Vertex/ADC setup. Refusing on the
+    # narrower question would reject runs that work. Defaults True so a config
+    # built by hand (tests, and any caller that does not set it) is never
+    # refused on a field it never filled in.
+    gemini_credential_present: bool = True
+    # Cap on concurrent generator/judge calls, 0 for unbounded. Unbounded is the
+    # CLI's behaviour and stays the default so the exported flintai-cli is
+    # unchanged; the hosted worker always sets it, because slots x concurrency x
+    # replicas otherwise lands hundreds of simultaneous requests on one shared
+    # Vertex project, and a 429 there does not stay a 429 — it fails prompts,
+    # breaches min_success_rate, errors the run, and SQS redelivers the whole
+    # thing, adding load to the overload.
+    concurrency_limit: int = 0
 
     @staticmethod
     def from_env() -> GeneratorConfig:
@@ -125,6 +168,7 @@ class GeneratorConfig:
 
         vertex: VertexConfig | None = None
         api_key_present = False
+        credential_present = True
         if model_type == "gemini":
             raw = os.environ.get("GOOGLE_VERTEX_CREDENTIALS_JSON", "").strip()
             if raw:
@@ -135,12 +179,21 @@ class GeneratorConfig:
                 )
             else:
                 api_key_present = bool(os.environ.get("GOOGLE_API_KEY", "").strip())
+                # Either name google-genai accepts, or an env-driven
+                # Vertex/ADC setup, which carries its own credential and needs
+                # no key. Anything else and ``Client()`` raises — which is
+                # exactly what ``genai_client_credential_present`` is defined
+                # to predict, and is shared with the eval CLI's preflight on
+                # the model under test so the two cannot disagree about one
+                # provider again.
+                credential_present = llm_credentials.genai_client_credential_present()
 
         return GeneratorConfig(
             model_type=model_type,
             model_name=model_name,
             vertex=vertex,
             gemini_api_key_present=api_key_present,
+            gemini_credential_present=credential_present,
         )
 
     def validate(self) -> None:
@@ -186,6 +239,12 @@ def set_generator_config(config: GeneratorConfig) -> None:
     _config = config
 
 
+def get_generator_config() -> GeneratorConfig | None:
+    """Return the config installed by ``set_generator_config()``, or ``None`` if
+    nothing has been installed yet (the CLI path, which never calls it)."""
+    return _config
+
+
 class GeneratorModel(Model):
     """Decorator that flags generator/judge calls made without a schema.
 
@@ -213,9 +272,12 @@ class GeneratorModel(Model):
                 "Generator model called without an output_schema; structured "
                 "output is not enforced and response parsing may fail"
             )
-        return await self._model.generate(
-            messages, output_schema=output_schema, **kwargs
-        )
+        # Attributes any failure beneath here to us rather than the tenant; see
+        # model_errors.generator_scope.
+        with generator_scope():
+            return await self._model.generate(
+                messages, output_schema=output_schema, **kwargs
+            )
 
 
 def get_generator_model() -> Model:
@@ -236,12 +298,38 @@ def _create_generator_model() -> Model:
     logger.debug(
         "Creating generator model: %s:%s", config.model_type, config.model_name
     )
+    if config.concurrency_limit > 0:
+        # Reuses the per-endpoint limiter, which keys its semaphore on any
+        # string: one budget per generator model per process. Inside RetryModel
+        # rather than outside, so a retry queues on the same budget instead of
+        # bypassing it — retries are exactly what a 429 produces.
+        #
+        # jitter_max=0: the jitter exists to spread an opening burst across a
+        # small tenant server, and this protects a cloud quota that is measured
+        # per minute, where staggering buys nothing and taxes every call.
+        inner = PerEndpointLimiter(
+            inner,
+            endpoint_url=f"generator:{config.model_type}:{config.model_name}",
+            limit=config.concurrency_limit,
+            jitter_max=0.0,
+        )
     return RetryModel(inner, max_retries=5)
 
 
 def _create_inner(config: GeneratorConfig) -> Model:
     model_type, model_name = config.model_type, config.model_name
     if model_type == "gemini":
+        if not config.gemini_credential_present:
+            # Pre-empting ``Client()``'s own bare ValueError, which carries no
+            # type the CLI could classify from. Same condition, so nothing
+            # that would have worked is refused here.
+            raise GeneratorCredentialError(
+                "The judge/generator model has no API key configured. Set "
+                "GOOGLE_API_KEY or GEMINI_API_KEY for the Gemini Developer "
+                "API, or GOOGLE_VERTEX_CREDENTIALS_JSON plus "
+                "GOOGLE_CLOUD_LOCATION for Vertex AI, and re-run."
+            )
+
         from switch_trust.eval.core.models.model_gemini import (  # noqa: PLC0415 - patched at source in tests
             SAFETY_OFF,
             GeminiModel,

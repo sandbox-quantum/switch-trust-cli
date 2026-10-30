@@ -50,10 +50,7 @@ def compute_cvss_v4_score(vector: str) -> float:
     _log = logging.getLogger("scorer")
 
     if not vector.startswith("CVSS:4.0/"):
-        _log.warning(
-            "[scorer] Invalid CVSS vector (wrong prefix): %r — defaulting to 0.0",
-            vector[:80],
-        )
+        _log.warning("[scorer] Invalid CVSS vector (wrong prefix) — defaulting to 0.0")
         return 0.0
 
     try:
@@ -61,9 +58,8 @@ def compute_cvss_v4_score(vector: str) -> float:
         return round(cvss_obj.base_score, 1)
     except Exception as exc:
         _log.warning(
-            "[scorer] CVSS4 computation failed for vector %r: %s — defaulting to 0.0",
-            vector[:80],
-            exc,
+            "[scorer] CVSS4 computation failed (%s) — defaulting to 0.0",
+            type(exc).__name__,
         )
         return 0.0
 
@@ -104,8 +100,7 @@ def score_finding(subcategory: str, source: str = "static") -> tuple[float, str,
     # Fix #7: Validate severity is in expected set before using it
     if severity not in band_ranges:
         logging.getLogger("scorer").warning(
-            f"[scorer] Invalid severity '{severity}' for {subcategory}. "
-            f"Valid: {list(band_ranges.keys())}. Defaulting to 'medium'."
+            "[scorer] Invalid severity for %s. Defaulting to 'medium'.", subcategory
         )
         severity = "medium"
 

@@ -9,6 +9,7 @@ from dataclasses_json import dataclass_json
 from switch_trust.eval.common.reference import Reference, ReferenceType
 from switch_trust.eval.common.utils import datetime_config, generate_id, now_utc
 from switch_trust.eval.db.base.common_types import SortDirection
+from switch_trust.eval.db.base.eval.eval_approach import EvaluationApproach
 from switch_trust.eval.db.base.eval.model_eval_run_types import DbModelEvaluationRun
 
 
@@ -25,14 +26,6 @@ class EvaluationType(str, Enum):
     METRIC_TONE = "metric_tone"
     ADVERSARIAL_PROBE = "adversarial_probe"
     TOPIC_GUARD = "topic_guard"
-
-
-class EvaluationApproach(str, Enum):
-    """Whether an evaluation actively probes the model
-    or passively measures a quality metric."""
-
-    PROBE = "Probe"
-    METRIC = "Metric"
 
 
 @dataclass_json

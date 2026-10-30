@@ -13,7 +13,7 @@ Single entry point:
       on the model returned by make_model().
 
 Configuration via SCANNER_MODEL env var in 'provider:model' format
-(e.g., 'google:gemini-3.5-flash', 'openai:gpt-5.4', 'anthropic:claude-sonnet-4-6').
+(e.g., 'google:gemini-3.8-flash', 'openai:gpt-5.4', 'anthropic:claude-sonnet-4-6').
 
 API keys are read from standard env vars by the underlying frameworks:
 GOOGLE_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY.
@@ -31,6 +31,7 @@ from typing import Any
 from google.adk.models.google_llm import Gemini
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types as genai_types
+from switch_trust.cli import llm_credentials
 
 from . import ADKModel
 
@@ -57,28 +58,9 @@ def _safe_error(exc: Exception) -> str:
 PROVIDER_GOOGLE = "google"
 PROVIDER_LITELLM = "litellm"
 
-DEFAULT_MODEL = "gemini-3.6-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
 
 _PROVIDER_ALIASES = {"gemini": "google"}
-
-# The env var(s) each provider's SDK reads its API key from. Used to tell a
-# *missing* key (skip the LLM stage with a warning — the customer never
-# configured one) from an *invalid* one (the provider returns 401, a real
-# user-domain failure). Only providers we can check for are listed; anything
-# absent is assumed configured so an exotic provider is never skipped on a false
-# "missing key" — it runs, and if the key really is absent, fails as before.
-_PROVIDER_API_KEY_ENV_VARS = {
-    "google": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
-    "openai": ("OPENAI_API_KEY",),
-    "anthropic": ("ANTHROPIC_API_KEY",),
-}
-
-
-def _google_adc_present() -> bool:
-    """Whether Google credentials exist via the Vertex/ADC path (no API key)."""
-    if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("1", "true"):
-        return True
-    return bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
 
 
 def api_key_present(model_string: str | None = None) -> bool:
@@ -88,14 +70,25 @@ def api_key_present(model_string: str | None = None) -> bool:
     key env var(s). Returns True for providers we have no mapping for, so a
     provider we can't preflight is left to run rather than being skipped on a
     guess.
+
+    Used to tell a *missing* key (skip the LLM stage with a warning — the
+    customer never configured one) from an *invalid* one (the provider returns
+    401, a real user-domain failure).
+
+    Google asks `genai_client_credential_present` — the same question the eval
+    paths ask, not the wider ADC one. `make_model` builds ADK's `Gemini`, which
+    is google-genai's `Client()`, so `GOOGLE_APPLICATION_CREDENTIALS` alone
+    leaves it in Developer-API mode where it still raises for a missing key.
+    Counting it made the preflight claim a key existed and the client then fail
+    to construct, which is how a runner holding that variable for unrelated GCP
+    access failed both LLM stages instead of skipping them.
     """
     provider, _ = _resolve_model_string(model_string)
-    if provider == PROVIDER_GOOGLE and _google_adc_present():
+    if provider == PROVIDER_GOOGLE:
+        return llm_credentials.genai_client_credential_present()
+    if provider not in llm_credentials.API_KEY_ENV_VARS:
         return True
-    env_vars = _PROVIDER_API_KEY_ENV_VARS.get(provider)
-    if env_vars is None:
-        return True
-    return any(os.getenv(var) for var in env_vars)
+    return llm_credentials.api_key_env_present(provider)
 
 
 # Reasoning effort for OpenAI gpt-5 reasoning models. See _openai_reasoning_effort.
@@ -323,8 +316,6 @@ def complete_text(
     except Exception as e:
         err_type = type(e).__name__
         safe_msg = _safe_error(e)
-        # Show a concise one-liner; full details at DEBUG level.
-        first_line = safe_msg.split("\n", 1)[0]
-        logger.error("LLM call failed (%s): %s", err_type, first_line)
+        logger.error("LLM call failed (%s)", err_type)
         logger.debug("LLM call failed (full): %s", safe_msg)
         return None

@@ -11,6 +11,7 @@ from switch_trust.eval.core.detectors.detector_model_adversarial import (
     DetectorLLMResponse,
 )
 from switch_trust.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model_errors import is_generator_failure
 
 
 def _model_returning(text: str) -> AsyncMock:
@@ -65,6 +66,22 @@ class TestAdversarialModelDetector(unittest.IsolatedAsyncioTestCase):
             await detector.detect(
                 _target_response("hmm"), goal="jailbreak", conversation=[]
             )
+
+    async def test_invalid_output_is_attributed_to_us(self):
+        # The judge is always our own model, never the tenant's -- an invalid
+        # verdict must classify as internal_error, not the tenant's agent.
+        model = _model_returning("not json at all")
+        detector = AdversarialModelDetector(
+            model=model, prompt="judge", include_conversation=False
+        )
+
+        try:
+            await detector.detect(
+                _target_response("hmm"), goal="jailbreak", conversation=[]
+            )
+            self.fail("expected ValueError")
+        except ValueError as exc:
+            self.assertTrue(is_generator_failure(exc))
 
     async def test_untrusted_response_is_fenced_in_a_user_turn(self):
         model = _model_returning('{"score": 0.1, "reason": "ok"}')

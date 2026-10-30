@@ -21,11 +21,14 @@ from switch_trust.cli.output_formatters import (
     get_eval_output_formatter,
 )
 from switch_trust.cli.rich_observer import RichObserver, pad_description
+from switch_trust.cli.exit_codes import CliExit, ExitCode
 from switch_trust.eval.core.eval.evaluation import (
     EvaluationResult,
     EvaluationStatus,
     EvaluationSummary,
 )
+from switch_trust.eval.core.models.generator_model import GeneratorCredentialError
+from switch_trust.eval.core.optional_deps import MissingToolError
 from switch_trust.eval.db.base.eval.model_eval_types import DbModelEvaluation
 from switch_trust.eval.db.json.repository_json import JsonRepository
 
@@ -66,12 +69,35 @@ async def run_cli_evaluation(
     desc = pad_description(db_eval.name, desc_width)
     task_id = progress.add_task(desc, total=None)
 
-    evaluation = store.evaluations.get_evaluation(
-        model_evaluation.evaluation_id,
-        message_collection_repo=store.message_collections,
-        detector_repo=store.detectors,
-    )
-    model = store.models.get_model(model_evaluation.model_id)
+    # A message-collection evaluation resolves its CSV file lazily, here,
+    # rather than at config-load time — a missing/unreadable file is the
+    # user's target, not a run failure, so it gets its own code rather than
+    # falling into the `except Exception` below (which is `evaluation.run()`'s
+    # per-prompt-failure path, not this one-time setup step).
+    #
+    # The judge/generator is built here too, by whichever evaluation or
+    # detector needs one, which is the only point a *missing* judge
+    # credential can be caught: no call is made, so the accumulator
+    # `eval_cli._check_model_credentials` reads stays empty and a bare
+    # provider ValueError would exit 1. Catching the type rather than
+    # preflighting the credential in `handle_run` is what keeps this exact:
+    # it fires only for the runs that actually need a judge.
+    try:
+        evaluation = store.evaluations.get_evaluation(
+            model_evaluation.evaluation_id,
+            message_collection_repo=store.message_collections,
+            detector_repo=store.detectors,
+        )
+        model = store.models.get_model(model_evaluation.model_id)
+    except GeneratorCredentialError as e:
+        raise CliExit(ExitCode.AUTH_FAILED, str(e)) from e
+    except OSError as e:
+        raise CliExit(
+            ExitCode.TARGET_ERROR,
+            f"Could not read {e.filename or db_eval.name}: {e.strerror or e}",
+        ) from e
+    except MissingToolError as e:
+        raise CliExit(ExitCode.MISSING_TOOLS, str(e)) from e
 
     observer = RichObserver(progress, task_id)
 
@@ -81,6 +107,12 @@ async def run_cli_evaluation(
         progress.update(task_id, total=total)
         evaluation.add_observer(observer)
         await evaluation.run(model, concurrency)
+    except GeneratorCredentialError as e:
+        # The metric evaluations build their judge lazily on first use rather
+        # than at construction, so this is reachable from `init()`/`run()` too.
+        raise CliExit(ExitCode.AUTH_FAILED, str(e)) from e
+    except MissingToolError as e:
+        raise CliExit(ExitCode.MISSING_TOOLS, str(e)) from e
     except Exception as e:
         logger.error(
             "Evaluation failed: %s (%s: %s)",

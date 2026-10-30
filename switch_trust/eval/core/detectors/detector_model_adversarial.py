@@ -15,6 +15,7 @@ from switch_trust.eval.core.models.model import (
     extract_text_from_conversation,
     extract_text_from_message,
 )
+from switch_trust.eval.core.models.model_errors import mark_generator_failure
 from switch_trust.eval.core.models.response_schema import parse_model_response
 
 logger = logging.getLogger(__name__)
@@ -79,10 +80,14 @@ class AdversarialModelDetector(ModelDetector):
                 detector_model_response, DetectorLLMResponse
             )
         except ValueError as exc:
-            raise ValueError(
+            # Always our judge's failure, never the tenant's -- see the same
+            # note in ModelDetector.detect().
+            wrapped = ValueError(
                 "AdversarialModelDetector LLM returned invalid data structure "
                 f"(status={detector_model_response.status.name}: {exc}"
-            ) from exc
+            )
+            mark_generator_failure(wrapped)
+            raise wrapped from exc
 
         logger.debug(
             "AdversarialModelDetector: score=%.2f",

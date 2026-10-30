@@ -25,6 +25,7 @@ from opentelemetry.sdk.trace import TracerProvider
 
 import switch_trust.cli.main as main_mod
 import switch_trust.cli.telemetry as telemetry
+from switch_trust.cli.exit_codes import CliExit, ExitCode
 
 # A value that stands in for the kinds of user-controlled / sensitive content
 # that must never leave the process: absolute file paths, prompts, provider
@@ -155,6 +156,15 @@ class TestAttributeAllowlist:
         assert _SECRET not in "".join(str(v) for v in attrs.values())
         assert _SECRET not in inmem.log_body()
 
+    def test_exit_code_survives_the_allowlist(self, inmem):
+        """Every classified stop is a `CliExit`, so `exception.type` cannot
+        tell a missing path from a rejected key — only the code can, and an
+        attribute missing from the allowlist is dropped silently."""
+        with telemetry.command_span("scan", subcommand=None) as span:
+            telemetry.record_exit_code(span, ExitCode.NO_TARGETS)
+
+        assert inmem.log_attributes().get("switch_trust.exit_code") == 23
+
     def test_span_path_keeps_all_allowlisted_keys(self, inmem):
         with telemetry.command_span(
             "eval", subcommand="models list", is_ci=True, is_first_time=True
@@ -207,6 +217,122 @@ class TestAttributeAllowlist:
             }
         )
         assert "exception.message" not in telemetry._ALLOWED_LOG_ATTRIBUTES
+
+
+# The telemetry relay drops every request whose resource carries no client id
+# it recognises, and answers 200 all the same, so renaming the key here loses
+# all CLI telemetry without an error anywhere. 1.7.0 shipped
+# switch_trust.client_id, which the relay reads as an alias of flint.client_id.
+# A new name needs the relay to learn it first.
+_RELAY_CLIENT_ID_KEYS = frozenset({"flint.client_id", "switch_trust.client_id"})
+
+
+class TestRelayContract:
+    def test_the_resource_carries_a_client_id_the_relay_accepts(self, monkeypatch):
+        monkeypatch.setattr(
+            telemetry, "OTLPLogExporter", lambda **_: InMemoryLogExporter()
+        )
+        monkeypatch.setattr(telemetry, "OTLPMetricExporter", lambda **_: None)
+        monkeypatch.setattr(
+            telemetry,
+            "PeriodicExportingMetricReader",
+            lambda *_, **__: InMemoryMetricReader(),
+        )
+        client_id = "0f8fad5b-d9cb-469f-a165-70867728950e"
+
+        telemetry.init_telemetry(client_id, "1.2.3")
+
+        assert telemetry._logger_provider is not None, "telemetry failed to initialise"
+        resource = dict(telemetry._logger_provider.resource.attributes)
+        sent = {key: resource[key] for key in _RELAY_CLIENT_ID_KEYS if key in resource}
+        assert sent and set(sent.values()) == {client_id}, (
+            f"the resource carries {sent or 'no client id'}; the relay accepts only "
+            f"{sorted(_RELAY_CLIENT_ID_KEYS)}"
+        )
+
+
+class TestConsoleDebugOverride:
+    """``OTLP_ENDPOINT=console`` swaps the OTLP exporters for OpenTelemetry's
+    console ones; every other value, including unset, must keep shipping to
+    the real endpoint unchanged."""
+
+    def _patch_exporters(self, monkeypatch):
+        used = {
+            "console_log": False,
+            "console_metric": False,
+            "otlp_log": False,
+            "otlp_metric": False,
+        }
+
+        def fake_console_log():
+            used["console_log"] = True
+            return InMemoryLogExporter()
+
+        def fake_console_metric():
+            used["console_metric"] = True
+            return None
+
+        def fake_otlp_log(**_):
+            used["otlp_log"] = True
+            return InMemoryLogExporter()
+
+        def fake_otlp_metric(**_):
+            used["otlp_metric"] = True
+            return None
+
+        monkeypatch.setattr(telemetry, "ConsoleLogExporter", fake_console_log)
+        monkeypatch.setattr(telemetry, "ConsoleMetricExporter", fake_console_metric)
+        monkeypatch.setattr(telemetry, "OTLPLogExporter", fake_otlp_log)
+        monkeypatch.setattr(telemetry, "OTLPMetricExporter", fake_otlp_metric)
+        monkeypatch.setattr(
+            telemetry,
+            "PeriodicExportingMetricReader",
+            lambda *_, **__: InMemoryMetricReader(),
+        )
+        return used
+
+    def test_console_selects_console_exporters(self, monkeypatch):
+        used = self._patch_exporters(monkeypatch)
+        monkeypatch.setenv("OTLP_ENDPOINT", "console")
+
+        telemetry.init_telemetry("client-id", "1.2.3")
+
+        assert used == {
+            "console_log": True,
+            "console_metric": True,
+            "otlp_log": False,
+            "otlp_metric": False,
+        }
+        assert telemetry._logger_provider is not None, "telemetry failed to initialise"
+
+    def test_unset_still_uses_otlp_exporters(self, monkeypatch):
+        used = self._patch_exporters(monkeypatch)
+        monkeypatch.delenv("OTLP_ENDPOINT", raising=False)
+
+        telemetry.init_telemetry("client-id", "1.2.3")
+
+        assert used == {
+            "console_log": False,
+            "console_metric": False,
+            "otlp_log": True,
+            "otlp_metric": True,
+        }
+        assert telemetry._logger_provider is not None, "telemetry failed to initialise"
+
+    def test_other_value_still_uses_otlp_exporters(self, monkeypatch):
+        """Only the literal ``"console"`` opts in — a typo or an unrelated
+        value must not silently disable production export."""
+        used = self._patch_exporters(monkeypatch)
+        monkeypatch.setenv("OTLP_ENDPOINT", "datadog")
+
+        telemetry.init_telemetry("client-id", "1.2.3")
+
+        assert used == {
+            "console_log": False,
+            "console_metric": False,
+            "otlp_log": True,
+            "otlp_metric": True,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +419,9 @@ _OUTCOMES = [
     pytest.param({"result": None}, 0, id="success"),
     pytest.param({"exc": RuntimeError("boom")}, 1, id="exception"),
     pytest.param({"exc": KeyboardInterrupt()}, 130, id="interrupt"),
+    pytest.param(
+        {"exc": CliExit(ExitCode.NO_TARGETS, "nothing to scan")}, 23, id="cli-exit"
+    ),
 ]
 
 
@@ -313,7 +442,7 @@ def _configure_main_env(monkeypatch, tmp_path, *, consent):
 
 
 def _set_dispatch(monkeypatch, *, result=None, exc=None):
-    def _dispatch(args):
+    def _dispatch(args, ci):
         if exc is not None:
             raise exc
         return result
@@ -322,9 +451,13 @@ def _set_dispatch(monkeypatch, *, result=None, exc=None):
 
 
 def _invoke_main(argv) -> int:
+    """`main` returns its exit code rather than raising (see `exit_codes.py`).
+
+    The `SystemExit` arm stays for the paths that still exit on our behalf —
+    argparse on an unparsable command line.
+    """
     try:
-        main_mod.main(argv)
-        return 0
+        return int(main_mod.main(argv))
     except SystemExit as exc:
         return exc.code if exc.code is not None else 0
 

@@ -5,7 +5,6 @@ Subcommands for `switch-trust eval`.
 from __future__ import annotations
 
 import argparse
-import sys
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -15,10 +14,21 @@ from rich.text import Text
 
 from switch_trust.cli.console import CLI_WIDTH, console
 from switch_trust.cli.utils import get_switch_trust_config_path
+from switch_trust.cli import llm_credentials
+from switch_trust.cli.exit_codes import CliExit, ExitCode
+from switch_trust.cli.http_status_kinds import StatusKind, status_kind
+from switch_trust.eval.common.utils import resolve_env
 from switch_trust.eval.core.eval.evaluation import EvaluationStatus
+from switch_trust.eval.core.models.model_errors import HOST_NOT_FOUND, ErrorKind
 from switch_trust.eval.db.base.eval.model_eval_types import DbModelEvaluation
+from switch_trust.eval.db.base.models.model_types import ModelType
 
 if TYPE_CHECKING:
+    # Annotations only — `handle_run` imports the runner lazily at call time,
+    # and every annotation here is a string under `from __future__ import
+    # annotations`, so this costs nothing at runtime.
+    from switch_trust.cli.runner import CliRunResult
+    from switch_trust.eval.core.models.model import ModelErrorAccumulator
     from switch_trust.eval.db.base.eval.model_eval_types import DbModelEvaluation
     from switch_trust.eval.db.json.repository_json import JsonRepository
 
@@ -52,10 +62,14 @@ def _parse_tags(raw: list[str]) -> dict[str, str]:
     tags: dict[str, str] = {}
     for item in raw:
         if "=" not in item:
-            console.print(
-                f"[red]Invalid tag format: {item!r} (expected KEY=VALUE)[/red]",
+            # CliExit, not sys.exit: SystemExit is a BaseException, so it flies
+            # past main's `except Exception` and the run is recorded to
+            # telemetry as a success. A malformed KEY=VALUE is a bad
+            # invocation, which is what argparse already exits 2 for.
+            raise CliExit(
+                ExitCode.USAGE,
+                f"Invalid tag format: {item!r} (expected KEY=VALUE)",
             )
-            sys.exit(1)
         k, v = item.split("=", 1)
         tags[k] = v
     return tags
@@ -700,6 +714,35 @@ def _register_run(
         metavar="KEY=VALUE",
         help="Filter by evaluation tag (repeatable)",
     )
+    run_parser.add_argument(
+        "--fail-under",
+        type=_score_threshold,
+        metavar="SCORE",
+        help=(
+            "Exit 5 if any evaluation scores below SCORE (0-1). "
+            "Omit to always exit 0 whatever the run scored."
+        ),
+    )
+
+
+def _score_threshold(raw: str) -> float:
+    """argparse type for `--fail-under`: a score in [0, 1].
+
+    Rejecting here rather than in `handle_run` is deliberate — argparse exits
+    2, the code the table reserves for a bad command line, and it does so
+    before the run burns a single model call.
+    """
+    try:
+        value = float(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"{raw!r} is not a number; --fail-under takes a score between 0 and 1",
+        ) from None
+    if not 0.0 <= value <= 1.0:
+        raise argparse.ArgumentTypeError(
+            f"score threshold must be between 0 and 1, got {value}",
+        )
+    return value
 
 
 async def handle_run(
@@ -713,11 +756,13 @@ async def handle_run(
     )
     from switch_trust.cli.runner import (  # noqa: PLC0415 - deferred import cost
         MAX_CONSECUTIVE_RUN_FAILURES,
-        CliRunResult,
         log_run_summary,
         print_results,
         run_cli_evaluation,
         write_output,
+    )
+    from switch_trust.eval.core.models.model import (  # noqa: PLC0415 - deferred import cost
+        track_model_errors,
     )
 
     model_tag_filter = _parse_tags(args.model_tag)
@@ -730,7 +775,10 @@ async def handle_run(
         eval_tag_filter,
     )
     if not model_evaluations:
+        _gate_targets(args, model_evaluations)
         return None
+
+    _check_target_credentials(store, model_evaluations)
 
     eval_names = [
         store.evaluations.get(me.evaluation_id).name for me in model_evaluations
@@ -741,31 +789,59 @@ async def handle_run(
 
     results: list[CliRunResult] = []
     consecutive_failures = 0
-    try:
-        progress.start()
-        for me in model_evaluations:
-            result = await run_cli_evaluation(
-                me,
-                store,
-                args.concurrency,
-                progress=progress,
-                desc_width=desc_width,
-            )
-            results.append(result)
-            if result.summary and result.summary.status == EvaluationStatus.ERROR:
-                consecutive_failures += 1
-                if consecutive_failures >= MAX_CONSECUTIVE_RUN_FAILURES:
-                    console.print(
-                        f"[red]Aborting: {consecutive_failures} consecutive"
-                        f" evaluations failed. Is the target reachable?[/red]",
+    stopped: CliExit | None = None
+    # Every `Model.generate()` failure inside this scope is counted and
+    # classified, which is the only way the CLI can tell "the provider
+    # rejected your key" from "the run went badly". The engine opens the same
+    # scope on the platform path; the CLI never did, so `ErrorKind` existed
+    # but nothing here could see it.
+    with track_model_errors() as model_errors:
+        try:
+            progress.start()
+            for me in model_evaluations:
+                try:
+                    result = await run_cli_evaluation(
+                        me,
+                        store,
+                        args.concurrency,
+                        progress=progress,
+                        desc_width=desc_width,
                     )
+                except CliExit as e:
+                    # A classified stop from *one* evaluation (a missing judge
+                    # credential, an unreadable prompt file, an uninstalled
+                    # optional tool) ends the batch — none of the three come
+                    # good by trying the next evaluation, and the remaining
+                    # ones would only re-pay the spend to fail the same way.
+                    # But it must not throw away what already scored: caught
+                    # here and re-raised below, the earlier evaluations still
+                    # reach `write_output` and the stop carries the artifact.
+                    stopped = e
                     break
-            else:
-                consecutive_failures = 0
-    finally:
-        progress.stop()
+                results.append(result)
+                if result.summary and result.summary.status == EvaluationStatus.ERROR:
+                    consecutive_failures += 1
+                    if consecutive_failures >= MAX_CONSECUTIVE_RUN_FAILURES:
+                        console.print(
+                            f"[red]Aborting: {consecutive_failures} consecutive"
+                            f" evaluations failed. Is the target reachable?[/red]",
+                        )
+                        # No flag is set for this: the shortfall between
+                        # `model_evaluations` and `results` *is* the record of
+                        # the abort, and `_check_run_completed` reads it there.
+                        # A break that forgot to set a flag would go back to
+                        # exiting 0 on a suite it never finished.
+                        break
+                else:
+                    consecutive_failures = 0
+        finally:
+            progress.stop()
 
     if not results:
+        # Nothing scored, so there is no report for the stop to carry.
+        if stopped is not None:
+            raise stopped
+        _gate_targets(args, results)
         return None
 
     print_results(results)
@@ -776,8 +852,587 @@ async def handle_run(
     output_path = args.output or (
         f"eval_{datetime.now().strftime('%Y%m%dT%H%M%S')}.{ext}"
     )
+    # Every stop below here runs after the report lands, so it still leaves
+    # its artifact, and they run in the documented precedence exit codes
+    # 20-39 > 6 > 5.
     write_output(results, args.config, output_path, fmt=fmt)
+    # A stop that ended the batch early is why the run has only part of its
+    # results, so it is the outcome to report.
+    if stopped is not None:
+        stopped.output_path = output_path
+        raise stopped
+    _check_run_completed(results, model_errors, len(model_evaluations), output_path)
+    _apply_fail_under(args, results, output_path)
     return output_path
+
+
+# -- the credential preflight -----------------------------------------
+#
+# Which provider each keyed SDK adapter talks to, and so whose credentials it
+# falls back to when a model's `key` is empty
+# (`db/base/models/model_helpers.py::_create_inner_model` omits `api_key=`
+# entirely, leaving the SDK to read its own). Only these three types are
+# listed because only they have a fallback to check: `ollama` and `litellm`
+# need no key of ours, `openai_compatible` defaults to a placeholder one, and
+# the agent/HTTP types carry their credential in `headers`, where a missing
+# var is already a config error `resolve_env` reports by name.
+#
+# The credentials themselves are `common/llm_credentials.py`'s, shared with the
+# scanner's preflight and the judge's own check. Mapping `ModelType` onto a
+# provider is the part that is ours, and all this table does.
+_PROVIDER_FOR_MODEL_TYPE: dict[ModelType, str] = {
+    ModelType.GEMINI: llm_credentials.PROVIDER_GOOGLE,
+    ModelType.OPENAI: llm_credentials.PROVIDER_OPENAI,
+    ModelType.ANTHROPIC: llm_credentials.PROVIDER_ANTHROPIC,
+}
+
+
+def _keyless_credential_present(model_type: ModelType) -> bool:
+    """Whether this provider will authenticate the model with no API key.
+
+    An API key is the usual credential, not the only one, and refusing a
+    target that would have worked is the worse of the two mistakes this
+    preflight can make: it is a hard stop with no override, while letting a
+    doubtful credential through costs one run that the post-run accumulator
+    then classifies properly. So the question asked here is only whether the
+    SDK can build a client at all.
+
+    **Gemini**: `GOOGLE_GENAI_USE_VERTEXAI` puts google-genai in Vertex mode,
+    where `Client()` fills the project in from ADC and needs no key — the
+    "No API key was provided" raise lives in the Developer-API branch it never
+    reaches. The *narrow* `vertexai_mode_enabled`, not `google_adc_present`:
+    `GOOGLE_APPLICATION_CREDENTIALS` on its own leaves the client in
+    Developer-API mode, where it still raises, so it is not a credential here
+    — nor, despite what this note used to say, for the scanner, which builds
+    the same google-genai client through ADK. `llm_credentials`' module
+    docstring carries the detail.
+
+    **Anthropic**: the SDK resolves `ANTHROPIC_AUTH_TOKEN` into an
+    `Authorization: Bearer` header, which is how a target behind a gateway is
+    configured; it raises for neither credential at construction time.
+
+    OpenAI has no such path — `AsyncOpenAI()` raises when no key resolves — so
+    the preflight and the SDK already agree there.
+    """
+    if model_type is ModelType.GEMINI:
+        return llm_credentials.vertexai_mode_enabled()
+    if model_type is ModelType.ANTHROPIC:
+        return llm_credentials.anthropic_auth_token_present()
+    return False
+
+
+def _check_target_credentials(
+    store: JsonRepository,
+    model_evaluations: list,
+) -> None:
+    """Refuse a model under test with no API key, before the run starts.
+
+    The counterpart to `scan_cli._check_configured_model`, for the other
+    command. Without it a missing key surfaces from inside the provider SDK as
+    a bare `ValueError` while the first evaluation is being built: no model
+    call is ever made, so the accumulator `_check_model_credentials` reads
+    stays empty and the run exits 1 — which tells a CI gate nothing and
+    invites a retry that cannot work.
+
+    A preflight rather than a post-mortem because it costs the user nothing
+    here: no evaluation has started, so there is no report to carry and no
+    `output_path` on the raise.
+
+    Only *absence* is checked, and only for the keyed SDK providers. A key the
+    provider rejects stays the post-run accumulator's job — it takes a call to
+    find that out — and a type with no key to miss is not an error. Nor is a
+    provider holding a credential that is not an API key at all, which is
+    `_keyless_credential_present`'s half of the question.
+    """
+    for model_id in dict.fromkeys(me.model_id for me in model_evaluations):
+        try:
+            db_model = store.models.get(model_id)
+        except KeyError:
+            # Not this check's to report: the run loop raises on the missing
+            # model with the context to say which assignment referenced it.
+            continue
+
+        provider = _PROVIDER_FOR_MODEL_TYPE.get(db_model.type)
+        if provider is None:
+            continue
+        env_vars = llm_credentials.API_KEY_ENV_VARS[provider]
+
+        try:
+            key = resolve_env(db_model.key)
+        except ValueError as e:
+            # The config names a variable for the key and the variable is not
+            # set. Still a missing credential, so still 20 — and naming the
+            # variable is the whole fix.
+            raise CliExit(
+                ExitCode.AUTH_FAILED,
+                f"The API key for model {db_model.name!r} could not be "
+                f"resolved: {e}. Set it, or put a key in the model's config, "
+                f"and re-run.",
+            ) from e
+
+        if (
+            (key and key.strip())
+            or llm_credentials.api_key_env_present(provider)
+            or _keyless_credential_present(db_model.type)
+        ):
+            continue
+
+        raise CliExit(
+            ExitCode.AUTH_FAILED,
+            f"No API key is configured for model {db_model.name!r}. Set "
+            f"{' or '.join(env_vars)}, or put a key in the model's config, "
+            f"and re-run.",
+        )
+
+
+# -- classified run failures ------------------------------------------
+#
+# `ErrorKind` is the eval engine's own taxonomy for why a model call failed,
+# and it is richer than the exit table needs. This maps only the kinds whose
+# exit code is unambiguous; everything else keeps falling through to the
+# catch-all 1 rather than being guessed at. The omissions are deliberate:
+#
+#   PLAN_LIMIT_EXCEEDED — has a clean target (21) and is simply not in scope
+#                here; add with a test rather than in passing.
+#   INTERNAL_ERROR / UNKNOWN — ours or unclassified, which is what 1 means.
+#
+# QUOTA_EXCEEDED is split below rather than mapped directly, the same way
+# UNREACHABLE is — see the comment above `_recorded_status_kind`.
+#
+# INVALID_CONFIG and TIMEOUT are both unambiguous, unlike UNREACHABLE below:
+# every status that `classify_model_error` sorts into INVALID_CONFIG
+# (INVALID_ARGUMENT/FAILED_PRECONDITION, or any residual 4xx not already
+# claimed by auth/timeout/quota/unreachable) means the same thing — the
+# endpoint answered and rejected the request shape — so it maps directly, with
+# no status sub-split needed. TIMEOUT is the same: a bare `TimeoutError`, a
+# 408/504, and google.rpc's `DEADLINE_EXCEEDED` are all the provider call
+# giving up, with no further split that would change the diagnosis.
+_EXIT_FOR_ERROR_KIND = {
+    ErrorKind.AUTH_FAILED: ExitCode.AUTH_FAILED,
+    ErrorKind.INVALID_CONFIG: ExitCode.INVALID_CONFIG,
+    ErrorKind.TIMEOUT: ExitCode.TIMEOUT,
+}
+
+# The two statuses `ModelErrorKey.status` records for `UNREACHABLE` when no
+# HTTP status exists at all: `model.py` stamps `HOST_NOT_FOUND` on an NXDOMAIN
+# and otherwise records `getattr(exc, "status", None)`, which stringifies to
+# the literal `"None"` for a bare connection refusal. Either means the network
+# itself is the problem, not the endpoint or its answer, hence exit 60.
+# Neither is an HTTP status, which is why they stay here rather than joining
+# the shared `StatusKind` table.
+_NETWORK_FAILURE_STATUSES = frozenset({HOST_NOT_FOUND, str(None)})
+
+
+# Three `ErrorKind`s are coarser than the exit table and get sub-split on the
+# status `ModelErrorKey` recorded per call. They are the whole reason this
+# file reads statuses at all:
+#
+#   AUTH_FAILED — `classify_model_error` maps both 401 and 403 to it (it is
+#       the customer-facing taxonomy, not the exit-code table), so the kind
+#       alone can't tell a rejected key (20) from a valid key the provider
+#       refused as unpermitted (21, plan/quota/scope).
+#   UNREACHABLE — collapses a 404 (the configured endpoint is wrong — fix it,
+#       exit 24), a 5xx (the provider's own backend failed — retry it, exit
+#       63), "host not found" and a bare connection refusal (retry it, exit
+#       60). Hence its absence from `_EXIT_FOR_ERROR_KIND` above.
+#   QUOTA_EXCEEDED — collapses an explicit HTTP 429 (a real request-rate cap
+#       the provider counted and answered over HTTP — retry it, exit 64) with
+#       a provider-declared rate limit that carried no status at all (exit
+#       61), which is what a provider reaching `_ERROR_STATUS_KINDS` through
+#       its google.rpc string alone leaves behind. Both are equally worth
+#       re-running; only the literal 429 gets the more specific code.
+#
+#       The split is on the *status*, not on the rpc string, so Gemini's
+#       `RESOURCE_EXHAUSTED` is exit 64: it arrives as a real 429 (on
+#       `APIError.code`), and the string rides `ModelErrorKey.error_status`
+#       rather than standing in for a status it does have. It read 61 while
+#       `model.py` recorded that string *as* the status — an artifact of the
+#       record site, not a distinction this table ever meant to draw.
+#
+# What each *status* means is not decided here — that is the shared table.
+def _recorded_status_kind(status: str | None) -> StatusKind | None:
+    """The shared meaning of a status `ModelErrorKey` recorded, as a string.
+
+    The accumulator keys on strings because the values it sees are not all
+    HTTP codes — `HOST_NOT_FOUND`, google.rpc names and the literal `"None"`
+    share the field. Anything non-numeric has no HTTP meaning and yields
+    `None`, which leaves it to the branches above.
+
+    This is a lookup, not a second table. The kinds that used to be spelled
+    out here as `"403"`, `"404"`, `"429"` and `status.isdigit() and
+    int(status) >= 500` now come from `http_status_kinds`, so the CLI cannot
+    disagree with the engine about which statuses mean what — including the
+    504 that this function previously had to document as "already claimed by
+    TIMEOUT upstream, so it never reaches here".
+    """
+    if status is None or not status.isdigit():
+        return None
+    return status_kind(int(status))
+
+
+def _dominant_status_for(
+    model_errors: ModelErrorAccumulator, kind: ErrorKind
+) -> str | None:
+    """The HTTP status behind most of the run's calls of one `kind`, if any."""
+    totals: dict[str, int] = {}
+    for key, count in model_errors.counts().items():
+        if key.kind is kind:
+            totals[key.status] = totals.get(key.status, 0) + count
+    if not totals:
+        return None
+    return max(totals, key=lambda status: totals[status])
+
+
+def _check_model_credentials(
+    model_errors: ModelErrorAccumulator,
+    output_path: str,
+) -> None:
+    """Name the model failure behind a run that produced no score.
+
+    **Only ever called for a run with no verdict** — `_check_run_completed`
+    owns that question and this is the "why" it asks for. The accumulator
+    cannot answer it on its own: `dominant_kind()` ranks the recorded kinds
+    against *each other*, never against the calls that succeeded, so it is
+    non-`None` whenever a single call failed anywhere in the run. Every
+    failed attempt is recorded at the `Model.generate()` choke point and
+    `RetryModel` retries through that same public method, so even a 429 the
+    retry recovered is in there. Called unconditionally, this would exit 64
+    on a 1000-prompt run where three prompts hit a 429 and recovered — report
+    written, every score valid, and a wrapper branching on the 60-79 band
+    re-running the lot.
+
+    Given no verdict, the prevailing kind *is* the explanation. A dominant
+    `auth_failed` means the credential is wrong or unpermitted, a dominant
+    `unreachable` whose calls were all 404s means the configured endpoint is
+    wrong, and a dominant `invalid_config` means the provider rejected the
+    request shape itself — none of these is fixed by re-running, which is
+    exactly what the 20-39 band is for. A dominant `unreachable` with no
+    status at all — a bare connection refusal or an unresolvable host — is
+    the one case that *is* worth re-running as-is, which is why it lands in
+    the 60-79 band instead, and a dominant `unreachable` whose calls were a
+    literal 5xx is the same: the provider's own backend failed, not the
+    request we sent it. A dominant `quota_exceeded` with a literal `"429"`
+    behind it is a real request-rate cap the provider counted and answered
+    over HTTP (exit 64) — including Gemini's `RESOURCE_EXHAUSTED`, which is
+    one; anything else is the same shape of exception without that status
+    (exit 61).
+
+    Returning without raising is normal, not a fallthrough: a kind with no
+    entry in the exit table (`internal_error`, `unknown`) leaves the scoreless
+    run to `ExitCode.EVAL_INCOMPLETE`, which is the right answer for it.
+    """
+    kind = model_errors.dominant_kind()
+    code = _EXIT_FOR_ERROR_KIND.get(kind)
+
+    if kind is ErrorKind.AUTH_FAILED:
+        status_meaning = _recorded_status_kind(_dominant_status_for(model_errors, kind))
+        if status_meaning is StatusKind.NOT_ENTITLED:
+            code = ExitCode.NOT_ENTITLED
+    elif kind is ErrorKind.UNREACHABLE:
+        status = _dominant_status_for(model_errors, kind)
+        status_meaning = _recorded_status_kind(status)
+        if status_meaning is StatusKind.NOT_FOUND:
+            code = ExitCode.WRONG_URL
+        elif status in _NETWORK_FAILURE_STATUSES:
+            code = ExitCode.NETWORK_FAILURE
+        elif status_meaning is StatusKind.UPSTREAM:
+            code = ExitCode.UPSTREAM_ERROR
+    elif kind is ErrorKind.QUOTA_EXCEEDED:
+        status_meaning = _recorded_status_kind(_dominant_status_for(model_errors, kind))
+        if status_meaning is StatusKind.RATE_CAP:
+            code = ExitCode.RESOURCE_EXHAUSTED
+        else:
+            code = ExitCode.RATE_LIMITED
+
+    if code is None:
+        return
+
+    failed = sum(
+        count for key, count in model_errors.counts().items() if key.kind is kind
+    )
+    plural = "s" if failed > 1 else ""
+    if code is ExitCode.NOT_ENTITLED:
+        message = (
+            f"The provider accepted the configured credential but refused it as "
+            f"not permitted on {failed} model call{plural}. Check the plan/quota "
+            f"for the model under test and re-run."
+        )
+    elif code is ExitCode.WRONG_URL:
+        message = (
+            f"The configured endpoint returned 404 Not Found on {failed} model "
+            f"call{plural}. Check the URL for the model under test and re-run."
+        )
+    elif code is ExitCode.INVALID_CONFIG:
+        message = (
+            f"The provider rejected the request shape on {failed} model "
+            f"call{plural}. Check the model configuration (input/output paths, "
+            f"payload) and re-run."
+        )
+    elif code is ExitCode.NETWORK_FAILURE:
+        message = (
+            f"Could not reach the configured endpoint on {failed} model "
+            f"call{plural}. This is often transient — re-run, and check "
+            f"connectivity/DNS for the model under test if it persists."
+        )
+    elif code is ExitCode.UPSTREAM_ERROR:
+        message = (
+            f"The configured endpoint's backend failed on {failed} model "
+            f"call{plural}. This is often transient — re-run."
+        )
+    elif code is ExitCode.RESOURCE_EXHAUSTED:
+        message = (
+            f"The provider rate-limited {failed} model call{plural} with "
+            f"HTTP 429. This is often transient — wait a moment and re-run."
+        )
+    elif code is ExitCode.RATE_LIMITED:
+        message = (
+            f"The provider declared a rate limit on {failed} model "
+            f"call{plural}. This is often transient — wait a moment and re-run."
+        )
+    elif code is ExitCode.TIMEOUT:
+        message = (
+            f"The provider call timed out on {failed} model "
+            f"call{plural}. This is often transient — re-run."
+        )
+    else:
+        message = (
+            f"The provider rejected the configured credential on {failed} model "
+            f"call{plural}. Check the API key for the model under test and re-run."
+        )
+    raise CliExit(code, message, output_path=output_path)
+
+
+# -- completeness, then the --fail-under gate -------------------------
+#
+# Both are checked in one place, after the report is written, so a job that
+# stops still collects its artifact. Every stop they can produce carries the
+# output path for the "Results:" footer (see `exit_codes.CliExit`).
+#
+# The two answer different questions and only one of them is opt-in.
+# `_check_run_completed` asks whether the run produced a verdict at all and
+# runs unconditionally; `_apply_fail_under` asks whether that verdict clears
+# the user's bar and runs only when they set one.
+#
+# `_check_model_credentials` is not a third question: it is how
+# `_check_run_completed` names the cause when the answer is no, which is why
+# it is called from inside rather than beside it. That placement is the
+# precedence 20-39 > 6 > 5, and it is also the gate — see its docstring for
+# why running it on a scored run exits non-zero on a healthy one.
+#
+# Scope note: a run where *some* evaluations errored and the rest produced a
+# score exits 0 (or trips the gate on what scored). That holds however badly
+# those evaluations failed — a rejected credential behind 600 of 1000 prompts
+# still exits 0 if the other 400 scored. Calling that incomplete needs a
+# policy for how much error is too much, which is a product decision, not a
+# default worth inventing here, and the per-evaluation errors are already on
+# screen.
+#
+# That note covers a *finished* run, and only a finished run. An evaluation
+# that errored was still asked and answered; one the abort in `handle_run`
+# skipped was never put to the model at all, so there is no error on screen
+# for it and no policy question to settle — the suite the user named is
+# simply not the suite that ran. `_check_run_completed` therefore asks two
+# things, not one: did anything score, and was every target reached. Both
+# have to be yes before a run can exit 0 or have its `--fail-under` gate
+# judged, because a gate applied to the fragment that ran would report "the
+# bar was met" on the strength of the evaluations that happened to come
+# first.
+
+_MAX_NAMED_IN_MESSAGE = 3
+
+
+def _gate_targets(
+    args: argparse.Namespace,
+    model_evaluations: list,
+) -> None:
+    """Refuse a gated run that resolved nothing to evaluate.
+
+    Without `--fail-under` this stays a yellow note and exit 0, as it always has.
+    With one, exiting 0 would report "the bar was met" for a run that measured
+    nothing — the false green a gate exists to prevent. It is `NO_TARGETS`
+    rather than `EVAL_INCOMPLETE` because the cause is a selector or tag filter
+    the user has to fix, which is what the 20-39 band means.
+    """
+    if model_evaluations or getattr(args, "fail_under", None) is None:
+        return
+    raise CliExit(
+        ExitCode.NO_TARGETS,
+        f"No evaluations ran, so --fail-under {args.fail_under:.2f} could not be checked.",
+    )
+
+
+def _produced_a_verdict(results: list[CliRunResult]) -> bool:
+    """Whether the run scored anything at all.
+
+    `EvaluationSummary.score` is `None` for anything that did not finish, so
+    one scored evaluation among errored ones still counts: there is a number
+    to report and the user can see what failed beside it.
+    """
+    return any(r.summary is not None and r.summary.score is not None for r in results)
+
+
+def _check_run_completed(
+    results: list[CliRunResult],
+    model_errors: ModelErrorAccumulator,
+    planned: int,
+    output_path: str,
+) -> None:
+    """Stop a run that produced no score, or never reached every target.
+
+    This is the one backwards-compatibility break the exit-code work makes on
+    purpose, and the defect CHOO-3479 was filed about: a run where every
+    evaluation errored used to write its report and exit 0, which is
+    indistinguishable from a run where everything passed.
+
+    Deliberately *not* behind `--fail-under`, unlike exit 5. The flags default
+    to off so that a verdict the user never asked to be judged cannot become a
+    new CI failure — but "no verdict was produced" is not a verdict, it is the
+    false green. Gating the fix behind the flag would leave every pipeline
+    that has not opted in still reporting a clean run for a total outage,
+    which is the whole defect.
+
+    Exit 6 is the fallback, not the first answer: the accumulator usually
+    knows *which* failure emptied the run, and `_check_model_credentials`
+    raises the specific code for it (20-39 to fix, 60-79 to retry) before we
+    settle for "no verdict". Only a kind the exit table has no entry for, or a
+    run that scored nothing without any model call failing, reaches the raise
+    below.
+
+    Not in the 60-79 retry band itself, even though the cause usually is
+    transient: the CLI has already exhausted the retries it does on its own
+    (per-prompt timeout/unreachable/quota), so re-running a whole eval is the
+    user's call rather than something a wrapper should automate. See
+    `ExitCode.EVAL_INCOMPLETE`.
+
+    The second stop is the same code for a different shortfall: `planned`
+    evaluations were resolved and fewer of them ran, which only happens when
+    the consecutive-failure abort in `handle_run` cut the suite short. One
+    early score is enough to satisfy the first question and would otherwise
+    carry the whole run to exit 0 — but a target the CLI gave up on before
+    reaching is not an evaluation that passed, and reporting it as one is the
+    same false green under a different cause.
+    """
+    if not _produced_a_verdict(results):
+        _check_model_credentials(model_errors, output_path)
+        raise _no_verdict_exit(results, planned, output_path)
+
+    if len(results) < planned:
+        raise _unfinished_suite_exit(results, planned, output_path)
+
+
+def _skipped_clause(results: list[CliRunResult], planned: int) -> str:
+    """`", N never ran"`, or nothing when the suite finished.
+
+    Counted against what `handle_run` resolved rather than carried out of the
+    loop, so a future `break` cannot forget to report itself.
+    """
+    skipped = planned - len(results)
+    return f", {skipped} never ran" if skipped > 0 else ""
+
+
+def _no_verdict_exit(
+    results: list[CliRunResult],
+    planned: int,
+    output_path: str,
+) -> CliExit:
+    """The bare "nothing scored" stop, for when no specific cause is known."""
+    errored = sum(
+        1
+        for r in results
+        if r.summary is not None and r.summary.status == EvaluationStatus.ERROR
+    )
+    return CliExit(
+        ExitCode.EVAL_INCOMPLETE,
+        f"No evaluation produced a score ({errored} of {len(results)} "
+        f"errored{_skipped_clause(results, planned)}), so this run has no "
+        f"verdict to report. Check the per-evaluation errors above and re-run.",
+        output_path=output_path,
+    )
+
+
+def _unfinished_suite_exit(
+    results: list[CliRunResult],
+    planned: int,
+    output_path: str,
+) -> CliExit:
+    """The "it scored, but not on everything you asked for" stop.
+
+    Phrased around the targets that never ran rather than the abort that
+    caused it: the abort is already on screen in red, and the fact a wrapper
+    needs is that the report covers part of the suite.
+    """
+    return CliExit(
+        ExitCode.EVAL_INCOMPLETE,
+        f"The run stopped early with {planned - len(results)} of {planned} "
+        f"evaluations never run, so its scores are not a verdict on the "
+        f"suite. Check the per-evaluation errors above and re-run.",
+        output_path=output_path,
+    )
+
+
+def _apply_fail_under(
+    args: argparse.Namespace,
+    results: list[CliRunResult],
+    output_path: str,
+) -> None:
+    """Trip the `--fail-under` gate, if one was asked for and the run cleared it.
+
+    `EvaluationSummary.score` is `None` for anything that did not finish, so
+    an errored evaluation is never scored as a zero — that would report a
+    provider outage as a model that failed the bar, which is the specific
+    confusion `EVAL_INCOMPLETE` exists to keep separate.
+
+    The comparison is strictly-below: `--fail-under 0.8` is the bar a score must
+    meet, so exactly 0.8 passes.
+    """
+    threshold = getattr(args, "fail_under", None)
+    if threshold is None:
+        return
+
+    scored = [
+        (_name_of(r), r.summary.score)
+        for r in results
+        if r.summary is not None and r.summary.score is not None
+    ]
+    if not scored:
+        # Unreachable from `handle_run`, which runs `_check_run_completed`
+        # first. Raising rather than returning is what keeps it that way: a
+        # bare `return` here would report the bar as met for a run that
+        # measured nothing, if the two were ever reordered. It is the bare
+        # exit 6 rather than the classified one because naming the cause
+        # needs the accumulator, and threading it through a branch nothing
+        # reaches would buy a better message on a path that never runs. The
+        # planned count is `len(results)` for the same reason: the gate is
+        # not told how many targets were resolved, so it claims no skips
+        # rather than guessing at them.
+        raise _no_verdict_exit(results, len(results), output_path)
+
+    below = sorted(
+        ((name, score) for name, score in scored if score < threshold),
+        key=lambda pair: pair[1],
+    )
+    if not below:
+        return
+
+    raise CliExit(
+        ExitCode.FINDINGS_THRESHOLD,
+        f"{len(below)} of {len(scored)} evaluations scored below "
+        f"{threshold:.2f}: {_summarise_below(below)}",
+        output_path=output_path,
+    )
+
+
+def _name_of(result: CliRunResult) -> str:
+    return result.evaluation.get("name") or result.model_evaluation_name or "?"
+
+
+def _summarise_below(below: list[tuple[str, float]]) -> str:
+    """Name the worst offenders, not all of them — this goes in a panel."""
+    named = ", ".join(
+        f"{name} ({score:.2f})" for name, score in below[:_MAX_NAMED_IN_MESSAGE]
+    )
+    remaining = len(below) - _MAX_NAMED_IN_MESSAGE
+    return f"{named}, +{remaining} more" if remaining > 0 else named
 
 
 def _filter_by_tags(

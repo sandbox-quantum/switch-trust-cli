@@ -119,8 +119,9 @@ def run_init() -> None:
         f"{api_key_var}={api_key}",
         "EXECUTOR_MAX_WORKERS=20",
         f"{CLIENT_ID_ENV_VAR}={client_id}",
-        f"{TELEMETRY_CONSENT_ENV_VAR}={telemetry_consent}",
     ]
+    if telemetry_consent is not None:
+        env_lines.append(f"{TELEMETRY_CONSENT_ENV_VAR}={telemetry_consent}")
 
     default_config = {
         "models": [],

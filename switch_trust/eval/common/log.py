@@ -2,17 +2,44 @@ import logging
 import os
 import re
 
-_REDACT_PATTERNS = re.compile(
+# Kept in sync by hand with servicelib.redact's VALUE_SHAPE_PATTERN and
+# KEY_NAME_PATTERN (common/py/servicelib), the same patterns roi's
+# platform/log.py imports directly — this file can't do the same because
+# cli_exporter/export.py copies eval/common/ verbatim into the standalone
+# flintai-cli PyPI package, which cannot depend on servicelib. Update both when
+# adding a new secret shape.
+#
+# Two patterns, applied in this order — not one: re.sub never rescans text it
+# has already consumed, so if the key-name pattern ran first against
+# "api_key: -----BEGIN RSA PRIVATE KEY-----\n<body>", its `\S+` would stop at
+# the first space and swallow only "api_key: -----BEGIN", hiding the rest of
+# the private key. Running the value-shape pattern first redacts the whole
+# block before the key-name pattern ever sees it.
+_VALUE_SHAPE_PATTERN = re.compile(
     r"("
     r"Bearer\s+[A-Za-z0-9\-_.~+/]+=*"
-    r"|sk-[A-Za-z0-9]{10,}"
+    r"|sk-[A-Za-z0-9\-_]{8,}"
     r"|key-[A-Za-z0-9]{10,}"
     r"|pat-[A-Za-z0-9]{10,}"
     r"|AIza[A-Za-z0-9_\-]{35,}"
     r"|xox[bspra]-[A-Za-z0-9\-]+"
     r"|ghp_[A-Za-z0-9]{36,}"
     r"|-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----"
-    r"[\s\S]*?-----END"
+    # Bounded at 8192 chars: unbounded [\s\S]*? is quadratic when a BEGIN
+    # header has no matching -----END later in the text, and this runs on
+    # every log record.
+    r"[\s\S]{0,8192}?-----END"
+    r")",
+    re.IGNORECASE,
+)
+
+# By key name, for a value VALUE_SHAPE_PATTERN didn't already catch. The
+# optional scheme word before \S+ covers "Bearer", "Basic", or any other auth
+# scheme, so "Authorization: Basic dXNlcjpwYXNz" redacts in full.
+_KEY_NAME_PATTERN = re.compile(
+    r"("
+    r"authorization\s*[:=]\s*(?:[A-Za-z]+\s+)?\S+"
+    r"|api[_-]?key\s*[:=]\s*\S+"
     r")",
     re.IGNORECASE,
 )
@@ -22,7 +49,9 @@ _REPLACEMENT = "[REDACTED]"
 
 def redact(text: str) -> str:
     """Replace any known secret pattern in ``text`` with ``[REDACTED]``."""
-    return _REDACT_PATTERNS.sub(_REPLACEMENT, text)
+    return _KEY_NAME_PATTERN.sub(
+        _REPLACEMENT, _VALUE_SHAPE_PATTERN.sub(_REPLACEMENT, text)
+    )
 
 
 class RedactingFilter(logging.Filter):

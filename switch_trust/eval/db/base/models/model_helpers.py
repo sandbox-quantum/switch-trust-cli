@@ -1,9 +1,7 @@
 from collections.abc import Callable
 
-import aiohttp
-
 from switch_trust.eval.common.utils import resolve_env, resolve_env_dict
-from switch_trust.eval.core.models.model import Model
+from switch_trust.eval.core.models.model import EndpointScopedModel, Model
 from switch_trust.eval.core.models.model_per_endpoint_limiter import (
     PerEndpointLimiter,
 )
@@ -27,7 +25,7 @@ def create_model(
     db_model: DbModel,
     max_retries: int = 5,
     resolve_env_vars: bool = True,
-    connector_factory: Callable[[], aiohttp.BaseConnector] | None = None,
+    wrap_inner: Callable[[Model], Model] | None = None,
     per_endpoint_limit: int = 8,
     initial_jitter_max: float = 1.0,
 ) -> Model:
@@ -36,15 +34,12 @@ def create_model(
     PerEndpointLimiter so bursts against one tenant endpoint don't blow past
     its QPS quota.
 
-    connector_factory, when set, is passed to the HTTP-based models so their
-    aiohttp sessions enforce the eval worker's request-time SSRF guard
-    (platform/ssrf.py). None keeps the default connector for CLI/local use.
+    wrap_inner, when set, wraps the bare model before the decorators; the eval
+    worker passes its SSRF guard (platform/ssrf.py). None for CLI/local use.
     """
-    inner = _create_inner_model(
-        db_model,
-        resolve_env_vars=resolve_env_vars,
-        connector_factory=connector_factory,
-    )
+    inner = _create_inner_model(db_model, resolve_env_vars=resolve_env_vars)
+    if wrap_inner is not None:
+        inner = wrap_inner(inner)
     if db_model.type in _LIMITED_HTTP_TYPES and db_model.host:
         inner = PerEndpointLimiter(
             inner,
@@ -52,13 +47,14 @@ def create_model(
             limit=per_endpoint_limit,
             jitter_max=initial_jitter_max,
         )
+    elif db_model.host:
+        inner = EndpointScopedModel(inner, endpoint_url=db_model.host)
     return RetryModel(inner, max_retries=max_retries)
 
 
 def _create_inner_model(
     db_model: DbModel,
     resolve_env_vars: bool = True,
-    connector_factory: Callable[[], aiohttp.BaseConnector] | None = None,
 ) -> Model:
     temp = db_model.temperature
     if resolve_env_vars:
@@ -163,7 +159,6 @@ def _create_inner_model(
             host=db_model.host or "http://localhost:8000",
             immediate_result=db_model.immediate_result,
             headers=headers or None,
-            connector_factory=connector_factory,
         )
 
     elif db_model.type == ModelType.OPENAI_AGENT:
@@ -174,7 +169,6 @@ def _create_inner_model(
         return OpenAIAgentModel(
             host=db_model.host or "http://localhost:8000",
             endpoint=db_model.endpoint or "/run",
-            connector_factory=connector_factory,
         )
 
     elif db_model.type == ModelType.ANTHROPIC_AGENT:
@@ -185,7 +179,6 @@ def _create_inner_model(
         return AnthropicAgentModel(
             host=db_model.host or "http://localhost:8000",
             endpoint=db_model.endpoint or "/run",
-            connector_factory=connector_factory,
         )
 
     elif db_model.type == ModelType.OPENAI_COMPATIBLE:
@@ -215,7 +208,6 @@ def _create_inner_model(
             headers=headers or None,
             input_path=db_model.input_path or "input",
             output_path=db_model.output_path or "output",
-            connector_factory=connector_factory,
         )
 
     elif db_model.type == ModelType.VERTEX_AGENT_RUNTIME:
@@ -234,7 +226,6 @@ def _create_inner_model(
             user_id=db_model.user_id or DEFAULT_USER_ID,
             class_method=db_model.class_method or DEFAULT_CLASS_METHOD,
             immediate_result=db_model.immediate_result,
-            connector_factory=connector_factory,
         )
 
     elif db_model.type == ModelType.LANGSERVE:
@@ -246,7 +237,6 @@ def _create_inner_model(
             base_url=db_model.host or "http://localhost:8000",
             chain_path=db_model.endpoint or "",
             headers=headers or None,
-            connector_factory=connector_factory,
         )
 
     else:
