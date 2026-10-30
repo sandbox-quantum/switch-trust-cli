@@ -59,7 +59,16 @@ def _detect_relevant_file(
 def find_relevant_files(path: str) -> list[RelevantFile]:
     """`path` might be a file or a directory.
     If it is a file, detect its type, if it is a directory,
-    recursively find relevant files in the given directory."""
+    recursively find relevant files in the given directory.
+
+    Raises `OSError` when `path` itself cannot be listed (e.g. permission
+    denied) — that is the scan target the caller named, and silently
+    reporting "nothing scannable" for it would be indistinguishable from an
+    empty, readable directory. An unreadable *subdirectory* further down the
+    walk is not fatal in the same way: `os.walk`'s default `onerror=None`
+    keeps skipping those, since the rest of a large tree is still worth
+    scanning.
+    """
     relevant_files = []
 
     path = os.path.abspath(path)
@@ -68,7 +77,12 @@ def find_relevant_files(path: str) -> list[RelevantFile]:
         if relevant_file:
             relevant_files.append(relevant_file)
     else:
-        for dirpath, _, filenames in os.walk(path):
+
+        def _raise_if_root(exc: OSError) -> None:
+            if exc.filename == path:
+                raise exc
+
+        for dirpath, _, filenames in os.walk(path, onerror=_raise_if_root):
             for filename in filenames:
                 relevant_file = _detect_relevant_file(os.path.join(dirpath, filename))
                 if relevant_file:

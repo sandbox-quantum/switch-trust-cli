@@ -17,7 +17,6 @@ from switch_trust.eval.core.detectors.detector_topic_guard import TopicGuardDete
 from switch_trust.eval.core.eval.evaluation import Evaluation, EvaluationStatus
 from switch_trust.eval.core.eval.evaluation_adversarial import (
     _ATTACKER_SYSTEM,
-    _BLOCKED_STATUSES,
     _TARGET_BROKEN_SCORE_THRESHOLD,
     AdversarialEvaluation,
     AttackerReply,
@@ -29,6 +28,7 @@ from switch_trust.eval.core.models.generator_model import (
     get_generator_model,
 )
 from switch_trust.eval.core.models.model import (
+    BLOCKED_STATUSES,
     Model,
     ModelResponse,
     extract_final_text,
@@ -137,7 +137,7 @@ class TopicGuardTurnEvaluation(SingleEvaluation):
 
             target_response = await model.generate(user_msg)
 
-            if target_response.status in _BLOCKED_STATUSES:
+            if target_response.status in BLOCKED_STATUSES:
                 assistant_msg = Message(
                     content=Content.text(
                         Role.ASSISTANT,

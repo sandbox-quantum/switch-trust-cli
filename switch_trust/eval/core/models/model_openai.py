@@ -46,18 +46,37 @@ class OpenAIModel(Model):
                 **kwargs,
             )
         except APIError as e:
+            blocked = _classify_block_reason(e)
+            if blocked is None:
+                raise
             return ModelResponse(
                 None,
-                _classify_block_reason(e),
+                blocked,
             )
         choice = response.choices[0]
         message = converter_openai.to_message(choice.message)
         return ModelResponse(message)
 
 
-def _classify_block_reason(api_error: APIError) -> ResponseStatus:
-    """Determine why a OpenAI response was blocked."""
+def _classify_block_reason(api_error: APIError) -> ResponseStatus | None:
+    """Why the provider's own safety layer declined, or None if it did not.
 
+    Only a *prompt-level content block* becomes a response: the request
+    reached the model, the model refused it, and that refusal is the
+    measurement — `BLOCKED_STATUSES` scores it as a pass rather than an error.
+
+    Everything else re-raises, and the `None` return is what says so. This
+    used to fall through to `ResponseStatus.ERROR`, which turned a 401, a 404
+    for a model name the provider does not have, a 429 or a 5xx into a
+    message-less response that no caller could tell apart from a block:
+    `Model.generate()` never saw an exception, so it recorded nothing on
+    `ModelErrorAccumulator`, and the whole 20-39/60-79 half of the exit table
+    (plus `MultiEvaluation`'s auth fail-fast, which reads the same
+    accumulator) was unreachable for every `openai` model. The run instead
+    errored every prompt on `SinglePromptEvaluation`'s "did not return a
+    message or an error status" and exited 6. Every other adapter lets the
+    provider's exception propagate; this one is why it must.
+    """
     # Check prompt-level blocking
     if isinstance(api_error, BadRequestError):
         code = (
@@ -68,4 +87,4 @@ def _classify_block_reason(api_error: APIError) -> ResponseStatus:
         if code in ["invalid_prompt", "bio_policy"]:
             return ResponseStatus.BLOCKED_SAFETY
 
-    return ResponseStatus.ERROR
+    return None

@@ -5,17 +5,9 @@ from switch_trust.eval.common.schema import Message, Session
 from switch_trust.eval.core.detectors.detector import Detector
 from switch_trust.eval.core.eval.evaluation import EvaluationStatus
 from switch_trust.eval.core.eval.evaluation_single import SingleEvaluation
-from switch_trust.eval.core.models.model import Model, ResponseStatus
+from switch_trust.eval.core.models.model import BLOCKED_STATUSES, Model
 
 logger = logging.getLogger(__name__)
-
-
-_BLOCKED_STATUSES = {
-    ResponseStatus.BLOCKED_SAFETY,
-    ResponseStatus.BLOCKED_RECITATION,
-    ResponseStatus.BLOCKED_PROHIBITED,
-    ResponseStatus.EMPTY_RESPONSE,
-}
 
 
 @dataclass
@@ -47,7 +39,7 @@ class SinglePromptEvaluation(SingleEvaluation):
             messages.append(response.message)
         self.session = Session(messages=messages)
 
-        if response.status in _BLOCKED_STATUSES:
+        if response.status in BLOCKED_STATUSES:
             logger.debug(
                 "SinglePromptEvaluation: response blocked (%s)", response.status.value
             )

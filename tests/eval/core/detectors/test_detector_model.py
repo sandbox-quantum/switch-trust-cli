@@ -9,7 +9,8 @@ from switch_trust.eval.core.detectors.detector_model import (
     _extract_text,
     _parse_score,
 )
-from switch_trust.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model import ModelResponse, ResponseStatus
+from switch_trust.eval.core.models.model_errors import is_generator_failure
 
 
 def _make_response(text: str) -> ModelResponse:
@@ -119,6 +120,32 @@ class TestModelDetector(unittest.IsolatedAsyncioTestCase):
         detector, _ = self._make_detector("I think it's somewhat safe")
         with self.assertRaises(ValueError):
             await detector.detect(_make_response("text"))
+
+    async def test_unparseable_model_output_is_attributed_to_us(self):
+        # The judge is always our own model (get_generator_model()), never the
+        # tenant's -- an unparseable verdict must classify as internal_error,
+        # not be reported as the tenant's agent misbehaving.
+        detector, _ = self._make_detector("I think it's somewhat safe")
+        try:
+            await detector.detect(_make_response("text"))
+            self.fail("expected ValueError")
+        except ValueError as exc:
+            self.assertTrue(is_generator_failure(exc))
+
+    async def test_blocked_judge_response_names_the_status(self):
+        # A judge call that comes back blocked (e.g. Gemini's safety filter,
+        # even with SAFETY_OFF -- see model_gemini.py) has no message to
+        # parse. The error should say why, not just that parsing failed.
+        model = MagicMock()
+        model.generate = AsyncMock(
+            return_value=ModelResponse(
+                message=None, status=ResponseStatus.BLOCKED_SAFETY
+            )
+        )
+        detector = ModelDetector(model=model)
+        with self.assertRaises(ValueError) as ctx:
+            await detector.detect(_make_response("text"))
+        self.assertIn("BLOCKED_SAFETY", str(ctx.exception))
 
     async def test_model_exception_propagates(self):
         model = MagicMock()

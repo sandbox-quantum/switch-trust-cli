@@ -63,7 +63,7 @@ def _load_cvss_mapping() -> dict:
         _CVSS_MAPPING = data.get("agentic_cvss_mapping", {})
         return _CVSS_MAPPING
     except Exception as e:
-        logger.warning("Could not load CVSS mapping: %s", e)
+        logger.warning("Could not load CVSS mapping (%s)", type(e).__name__)
         _CVSS_MAPPING = {}
         return _CVSS_MAPPING
 
@@ -700,9 +700,8 @@ class ToolDispatcher:
         canonical = resolve_subcategory(subcategory)
         if canonical is None:
             logger.warning(
-                "report_finding: subcategory %r is not in the taxonomy; "
-                "classifying as beyond_asi",
-                subcategory,
+                "report_finding: subcategory is not in the taxonomy; "
+                "classifying as beyond_asi"
             )
         else:
             subcategory = canonical

@@ -1,6 +1,6 @@
 [project]
 name = "switch-trust-cli"
-version = "1.7.2"
+version = "1.8.0"
 description = "Command-line tool for evaluating agents, offering two features to assess agents via code scanning (`switch-trust scan`, whitebox testing) and runtime evaluation (`switch-trust eval`, blackbox testing)"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -8,9 +8,12 @@ requires-python = ">=3.11"
 authors = [
   { name = "SandboxAQ", email = "info@switchagents.ai" },
 ]
+# These versions are kept in step with the versions the library is developed
+# and tested against upstream, so an installed `switch-trust` runs what was
+# tested. Please raise an issue rather than re-pinning one in isolation.
 dependencies = [
   "aiohttp>=3.14.3",
-  "anthropic==0.87.0",
+  "anthropic>=0.25.0",
   # Direct floor pin for transitive dependency of google-adk->google-auth
   # required for `pip-compile` to resolve the dependency tree.
   "pyOpenSSL>=26.4.0",
@@ -19,32 +22,34 @@ dependencies = [
   "cryptography>=50.0.0",
   "bandit==1.9.4",
   "cvss>=2.6",
-  "datafog>=4.4.0",
+  "datafog==4.4.0",
   "dataclasses-json==0.6.7",
   "detect-secrets==1.5.0",
-  "google-adk==2.2.0",
-  "litellm>=1.83.7",
-  "openai==2.29.0",
-  # Cap opentelemetry at 1.41.1 to match google-adk's hard ceiling
-  # (opentelemetry-api/sdk >=1.36,<=1.41.1). Without the cap, pip-compile
-  # grabs the newest otel (1.42+) then backtracks the whole otel stack down
-  # in lockstep, which is slow and can spuriously hit ResolutionImpossible.
-  "opentelemetry-api>=1.38.0,<=1.41.1",
-  "opentelemetry-exporter-otlp-proto-http>=1.38.0,<=1.41.1",
-  "opentelemetry-sdk>=1.38.0,<=1.41.1",
+  "google-adk==1.38.0",
+  # switch_trust/eval/core/models/{generator_model,
+  # model_vertex_agent_runtime}.py build service-account credentials with it.
+  "google-auth>=2.60.0",
+  "google-genai>=1.0.0",
+  # switch_trust/scan/exception_classification.py classifies httpx transport
+  # errors.
+  "httpx==0.28.1",
+  "litellm==1.100.4",
+  "openai>=1.0.0",
+  "opentelemetry-api==1.38.0",
+  "opentelemetry-exporter-otlp-proto-http==1.38.0",
+  "opentelemetry-sdk==1.38.0",
   "pip-audit==2.10.1",
   # google-adk chains the whole otel stack to <=1.42.1, whose
   # opentelemetry-proto still requires protobuf<7.0, while google-api-core /
-  # googleapis-common-protos / grpcio-status require protobuf>=6.33.5. That
-  # leaves 6.33.x as the only viable window; pin it so the resolver lands
-  # there directly instead of backtracking down from protobuf 7.x.
-  "protobuf>=6.33.5,<7",
+  # googleapis-common-protos / grpcio-status require protobuf>=6.33.5. The
+  # exact pin keeps the resolver from backtracking down from protobuf 7.x.
+  "protobuf==6.33.5",
   "pydantic==2.12.5",
-  "python-dotenv==1.2.2",
-  "requests>=2.33.0",
-  "rich>=13.0",
-  "msgpack>=1.2.1",
-  "pydantic-settings>=2.14.2",
+  "python-dotenv>=1.0.0",
+  # switch_trust/scan/static_scanner.py parses the OpenGrep rule file.
+  "PyYAML>=6.0.0",
+  "requests==2.34.2",
+  "rich>=13.0.0",
 ]
 
 [project.optional-dependencies]

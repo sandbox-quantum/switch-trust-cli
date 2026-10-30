@@ -115,7 +115,9 @@ def _dicts_to_findings(finding_dicts: list[dict[str, Any]]) -> list[Finding]:
             findings.append(Finding(**d))
         except (TypeError, ValueError, KeyError) as e:
             finding_id = d.get("id", "?") if isinstance(d, dict) else "?"
-            logger.error("Skipping malformed finding dict %s: %s", finding_id, e)
+            logger.error(
+                "Skipping malformed finding dict %s (%s)", finding_id, type(e).__name__
+            )
             continue
     if len(findings) < len(finding_dicts):
         logger.warning(
@@ -143,7 +145,9 @@ def convert_static_findings(static_findings: list[StaticFinding]) -> list[Findin
                 or not hasattr(sf, "rule_id")
                 or not hasattr(sf, "filepath")
             ):
-                logger.error("StaticFinding missing required attributes: %s", sf)
+                logger.error(
+                    "StaticFinding missing required attributes (%s)", type(sf).__name__
+                )
                 conversion_errors += 1
                 continue
 
@@ -182,9 +186,9 @@ def convert_static_findings(static_findings: list[StaticFinding]) -> list[Findin
                 cvss_score, cvss_vector, severity = score_finding(subcategory, sf.tool)
             except Exception as e:
                 logger.warning(
-                    "Could not score finding %s: %s. Defaulting to medium severity.",
+                    "Could not score finding %s (%s). Defaulting to medium severity.",
                     sf.rule_id,
-                    e,
+                    type(e).__name__,
                 )
                 cvss_score, cvss_vector, severity = (
                     5.5,
@@ -257,9 +261,9 @@ def convert_static_findings(static_findings: list[StaticFinding]) -> list[Findin
             )
         except Exception as e:
             logger.error(
-                "Failed to convert finding %s: %s",
+                "Failed to convert finding %s (%s)",
                 getattr(sf, "rule_id", "?"),
-                e,
+                type(e).__name__,
             )
             conversion_errors += 1
             continue
@@ -318,9 +322,8 @@ def convert_ai_findings(ai_findings: list[RawFinding]) -> list[Finding]:
                     )
                 except Exception as e:
                     logger.warning(
-                        "Could not score AI finding '%s': %s. Defaulting to medium severity.",
-                        raw.get("title", "?"),
-                        e,
+                        "Could not score AI finding (%s). Defaulting to medium severity.",
+                        type(e).__name__,
                     )
                     cvss_score = 5.5
                     cvss_vector = "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N"  # noqa: B950
@@ -336,8 +339,7 @@ def convert_ai_findings(ai_findings: list[RawFinding]) -> list[Finding]:
             valid_severities = VALID_SEVERITIES
             if severity not in valid_severities:
                 logger.warning(
-                    "Invalid severity '%s' for AI finding. Defaulting to 'medium'.",
-                    severity,
+                    "Invalid severity for AI finding. Defaulting to 'medium'."
                 )
                 severity = "medium"
 
@@ -380,7 +382,7 @@ def convert_ai_findings(ai_findings: list[RawFinding]) -> list[Finding]:
                 )
             )
         except Exception as e:
-            logger.error("Failed to convert AI finding: %s", e)
+            logger.error("Failed to convert AI finding (%s)", type(e).__name__)
             conversion_errors += 1
             continue
 
@@ -507,7 +509,7 @@ def _read_inventory_files(
                     RepoFile(path=rel_path, content=content, size=len(content))
                 )
             except Exception as exc:
-                logger.warning("Could not read %s: %s", abs_path, exc)
+                logger.warning("Could not read a repo file (%s)", type(exc).__name__)
 
     requirements_files = []
     for name in REQUIREMENT_FILE_NAMES:
@@ -570,7 +572,7 @@ def run_core(
         llm_model = make_model(scanner="agent", phase="triage")
         logger.info("LLM model: %s", llm_model)
     except Exception as e:
-        logger.info("Could not initialise LLM model (%s): %s", type(e).__name__, e)
+        logger.info("Could not initialise LLM model (%s)", type(e).__name__)
         logger.info("AI reasoning and triage will be skipped.")
 
     agentic_trace: dict[str, str] = {}
@@ -598,9 +600,8 @@ def run_core(
             logger.info("AI findings converted: %d", len(ai_findings))
         except Exception as e:
             logger.warning(
-                "AI reasoning failed (%s): %s — continuing with static findings only",
+                "AI reasoning failed (%s) — continuing with static findings only",
                 type(e).__name__,
-                e,
             )
             ai_summary = f"AI reasoning failed: {e}"
     else:
@@ -684,13 +685,15 @@ def run_core(
                             or "id" not in d
                             or "reason" not in d
                         ):
-                            logger.warning("Malformed triage_dismissed entry: %s", d)
+                            logger.warning("Malformed triage_dismissed entry")
                             continue
                         triage_dismissed.append(
                             TriageDismissed(finding_id=d["id"], reason=d["reason"])
                         )
                     except (KeyError, TypeError) as e:
-                        logger.warning("Could not construct TriageDismissed: %s", e)
+                        logger.warning(
+                            "Could not construct TriageDismissed (%s)", type(e).__name__
+                        )
                         continue
 
                 triage_downgraded = []
@@ -705,7 +708,7 @@ def run_core(
                                 "reason",
                             ]
                         ):
-                            logger.warning("Malformed triage_downgraded entry: %s", d)
+                            logger.warning("Malformed triage_downgraded entry")
                             continue
                         triage_downgraded.append(
                             TriageDowngraded(
@@ -716,7 +719,10 @@ def run_core(
                             )
                         )
                     except (KeyError, TypeError) as e:
-                        logger.warning("Could not construct TriageDowngraded: %s", e)
+                        logger.warning(
+                            "Could not construct TriageDowngraded (%s)",
+                            type(e).__name__,
+                        )
                         continue
 
                 triage_meta = triage_result.get("triage_summary", {})
@@ -734,7 +740,7 @@ def run_core(
                     len(triage_downgraded),
                 )
             except Exception as e:
-                logger.error("Failed to process triage result: %s", e)
+                logger.error("Failed to process triage result (%s)", type(e).__name__)
                 logger.warning(
                     "Using raw findings unchanged due to triage processing error"
                 )
@@ -752,9 +758,7 @@ def run_core(
     for f in all_findings:
         if f.ai_spm_severity not in severity_order:
             logger.warning(
-                "Finding %s has invalid severity '%s'. Treating as 'Low'.",
-                f.id,
-                f.ai_spm_severity,
+                "Finding %s has an invalid severity. Treating as 'Low'.", f.id
             )
             f.ai_spm_severity = "Low"  # type: ignore
     all_findings.sort(key=lambda f: severity_order.get(f.ai_spm_severity, 5))

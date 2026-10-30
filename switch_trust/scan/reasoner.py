@@ -59,6 +59,12 @@ from switch_trust.scan.exception_classification import (
     classify_exception,
     is_auth_error,
     is_model_error,
+    is_network_error,
+    is_not_entitled,
+    is_rate_limited,
+    is_resource_exhausted,
+    is_timeout_error,
+    is_upstream_error,
 )
 from switch_trust.scan.llm_provider import _safe_error, make_model
 from switch_trust.secret_anonymizer import anonymize_secrets
@@ -407,6 +413,58 @@ async def _run_adk_async(
     return final_text, exit_reason
 
 
+def _classify_reasoning_failure(exc: Exception, domain: FailureDomain) -> str | None:
+    """Which bounded `error_reason` the trace carries out for `exc`.
+
+    The eight predicates are an allowlist of *specific*, customer-actionable
+    causes, checked most-specific first: entitlement ahead of auth (a 403 is
+    a plan problem, not a wrong key), auth ahead of model (a 401 is never a
+    bad model id), and the four retryable shapes after the three config ones.
+
+    `domain` is the floor under them. Every predicate can decline — most
+    need a status, and `is_upstream_error` deliberately will not sniff
+    messages for one — so without a terminal branch a failure none of them
+    named carried no reason at all, `scan_cli._check_llm_credentials` found
+    nothing to look up, and `switch-trust scan` exited 0 on a report whose
+    entire AI reasoning layer was missing. That is the same false green the
+    named reasons exist to close, reached from the one direction none of
+    them covers, and it is not exotic: a statusless 5xx gets there whenever
+    litellm wraps a Gemini error without a `.response` for `http_status_of`
+    to read.
+
+    `provider` is the half worth claiming, and `classify_exception` reaches
+    it for exactly those statusless SDK failures, by module prefix. It takes
+    "upstream" rather than a reason of its own because the posture is what
+    the caller acts on — a third party across a network boundary failed, so
+    retry — and exit 63 already says that. The remaining domains fall
+    through: a `user` failure no predicate recognised, and an `internal` or
+    `unknown` one, still return `None`.
+    """
+    if is_not_entitled(exc):
+        # Valid credential, insufficient entitlement — distinct from a
+        # rejected key (401), and a different fix (plan/quota, not the
+        # token). Checked ahead of `is_auth_error`, which still claims it
+        # for the console's coarser "key invalid" diagnostic.
+        return "not_entitled"
+    if is_auth_error(exc):
+        return "auth"
+    if is_model_error(exc):
+        return "model"
+    if is_timeout_error(exc):
+        return "timeout"
+    if is_upstream_error(exc):
+        return "upstream"
+    if is_resource_exhausted(exc):
+        return "resource_exhausted"
+    if is_rate_limited(exc):
+        return "rate_limited"
+    if is_network_error(exc):
+        return "network"
+    if domain is FailureDomain.PROVIDER:
+        return "upstream"
+    return None
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 
@@ -443,9 +501,7 @@ def run_agentic_reasoning(
         missing = [f for f in _REQUIRED if not getattr(agent, f, None)]
         if missing:
             logger.warning(
-                "[reasoner] Agent '%s' missing required fields: %s — skipping",
-                getattr(agent, "agent_id", "?"),
-                missing,
+                "[reasoner] Agent missing required fields: %s — skipping", missing
             )
             invalid_agents.append(agent)
 
@@ -466,8 +522,9 @@ def run_agentic_reasoning(
         adk_model = make_model(scanner="agent", phase="reasoner")
         logger.info("ADK model: %s", adk_model)
     except (ImportError, ValueError) as e:
-        logger.error("ADK model resolution failed: %s", e)
-        logger.error("ADK setup failed — cannot proceed without ADK: %s", e)
+        logger.error(
+            "ADK setup failed — cannot proceed without ADK (%s)", type(e).__name__
+        )
         return [], f"ADK setup failed — {e}", {"error": str(e)}
 
     # Set up dispatcher and tracer.
@@ -498,7 +555,7 @@ def run_agentic_reasoning(
     try:
         adk_agent = _build_adk_agent(adk_model, adk_tools)
     except ImportError as e:
-        logger.error("ADK agent build failed: %s", e)
+        logger.error("ADK agent build failed (%s)", type(e).__name__)
         return [], f"ADK agent build failed — {e}", {"error": str(e)}
 
     # Build initial investigation brief
@@ -524,9 +581,12 @@ def run_agentic_reasoning(
     exit_reason = "completed"
     final_text = ""
     # Classified where the exception still exists, then carried out in the trace
-    # (`error_domain`, and `error_reason` — "auth"/"model" — for the specific
-    # customer-actionable config failures). The exception itself is discarded here
-    # for telemetry safety, so the caller cannot re-classify it — see
+    # (`error_domain`, and `error_reason` — "not_entitled"/"auth"/"model"/
+    # "timeout"/"upstream"/"resource_exhausted"/"rate_limited"/"network" — for
+    # the specific customer-actionable config failures; see
+    # `_classify_reasoning_failure` for why a provider failure none of those
+    # name still gets one). The exception itself is discarded here for
+    # telemetry safety, so the caller cannot re-classify it — see
     # `_agent_scan_summary`.
     error_domain: FailureDomain | None = None
     error_reason: str | None = None
@@ -544,15 +604,11 @@ def run_agentic_reasoning(
     except Exception as e:
         err_type = type(e).__name__
         safe_msg = _safe_error(e)
-        first_line = safe_msg.split("\n", 1)[0]
-        logger.error("ADK execution failed (%s): %s", err_type, first_line)
+        logger.error("ADK execution failed (%s)", err_type)
         logger.debug("ADK execution failed (full):\n%s", safe_msg, exc_info=True)
         exit_reason = "error"
         error_domain = classify_exception(e)
-        if is_auth_error(e):
-            error_reason = "auth"
-        elif is_model_error(e):
-            error_reason = "model"
+        error_reason = _classify_reasoning_failure(e, error_domain)
     finally:
         pool.shutdown(wait=False)
 
@@ -588,8 +644,12 @@ def run_agentic_reasoning(
         # summary reads it back to attribute the failure.
         trace_meta["error_domain"] = error_domain.value
     if error_reason is not None:
-        # "auth"/"model" — lets the caller surface a precise "API key invalid" /
-        # "model invalid" line to the customer. Bounded, like error_domain.
+        # "not_entitled"/"auth"/"model"/"timeout"/"upstream"/
+        # "resource_exhausted"/"rate_limited"/"network" — lets the caller
+        # surface a precise "not permitted" / "API key invalid" / "model
+        # invalid" / "timed out" / "backend failed" / "rate limited (429)" /
+        # "rate limited" / "could not reach provider" line to the customer.
+        # Bounded, like error_domain.
         trace_meta["error_reason"] = error_reason
 
     logger.info(

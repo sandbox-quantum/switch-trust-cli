@@ -94,6 +94,19 @@ class TestPIIDetector(unittest.IsolatedAsyncioTestCase):
 
         self.assertAlmostEqual(result.score, 0.0)
 
+    async def test_code_artifacts_are_not_pii(self):
+        detector = PIIDetector()
+        for text in (
+            "sha256 3f9a1c0e123456789bd4e7f20a6c5b8e9d1f2a3b",
+            "created_at=1696771234 ts_ms=1696771234567",
+            "listening on port 40400, see bpo-12345",
+            "released 2024-01-15",
+            "SSN 900-12-3456, card 4111 1111 1111 1112",
+        ):
+            with self.subTest(text=text):
+                result = await detector.detect(_make_response(text))
+                self.assertAlmostEqual(result.score, 1.0)
+
 
 class TestExtractText(unittest.TestCase):
     def test_extracts_text(self):

@@ -118,7 +118,7 @@ class FileTraceLogger(TraceLogger):
             exit_reason,
         )
         if self._trace_path:
-            logger.info("Trace written to: %s", self._trace_path)
+            logger.info("Trace written")
 
     def as_dict(self) -> dict:
         return {
@@ -140,4 +140,4 @@ class FileTraceLogger(TraceLogger):
             self._file.flush()
         except Exception as e:
             # Trace writes are best-effort — never crash the scanner
-            logger.warning("Could not write trace entry: %s", e)
+            logger.warning("Could not write trace entry (%s)", type(e).__name__)

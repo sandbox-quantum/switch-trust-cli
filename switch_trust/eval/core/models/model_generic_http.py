@@ -18,7 +18,6 @@ nested responses, e.g. ``"data.response.text"`` or
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -41,10 +40,6 @@ class GenericHttpModel(Model):
     _headers: dict[str, str]
     _input_path: str
     _output_path: str
-    # Optional aiohttp connector factory. The eval worker passes one that
-    # enforces the request-time SSRF guard (platform/ssrf.py); None keeps the
-    # default connector for the CLI and local use.
-    _connector_factory: Callable[[], aiohttp.BaseConnector] | None
 
     def __init__(
         self,
@@ -52,13 +47,11 @@ class GenericHttpModel(Model):
         headers: dict[str, str] | None = None,
         input_path: str = "input",
         output_path: str = "output",
-        connector_factory: Callable[[], aiohttp.BaseConnector] | None = None,
     ):
         self._url = url
         self._headers = headers or {}
         self._input_path = input_path
         self._output_path = output_path
-        self._connector_factory = connector_factory
 
     async def _generate(
         self,
@@ -71,8 +64,7 @@ class GenericHttpModel(Model):
         # output_schema is accepted for interface parity and ignored.
         prompt_text = flatten_messages(messages)
 
-        connector = self._connector_factory() if self._connector_factory else None
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with aiohttp.ClientSession() as session:
             async with session.post(
                 self._url,
                 json={self._input_path: prompt_text},

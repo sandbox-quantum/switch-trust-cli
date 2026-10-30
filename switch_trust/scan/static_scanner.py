@@ -92,7 +92,7 @@ def _module_available(module: str) -> bool:
     try:
         return importlib.util.find_spec(module) is not None
     except Exception as e:  # a broken package must not break the scan
-        logger.warning("Could not resolve the %s module: %s", module, e)
+        logger.warning("Could not resolve the %s module (%s)", module, type(e).__name__)
         return False
 
 
@@ -118,7 +118,7 @@ def _opengrep_skip_reason() -> str:
         parsed = yaml.safe_load(_load_opengrep_rules()) or {}
         count = len(parsed.get("rules") or [])
     except Exception as e:  # a malformed rules file must not break the scan
-        logger.warning("Could not count OpenGrep agent rules: %s", e)
+        logger.warning("Could not count OpenGrep agent rules (%s)", type(e).__name__)
         count = 0
     rules = (
         f"{count} agent-specific rule{'' if count == 1 else 's'}"
@@ -186,7 +186,7 @@ def run_bandit(files_dir: str) -> list[StaticFinding]:
                 )
             )
     except Exception as e:
-        logger.error("Bandit error: %s", e)
+        logger.error("Bandit error (%s)", type(e).__name__)
 
     return findings
 
@@ -222,8 +222,8 @@ def run_opengrep(files_dir: str, rules_file: str) -> list[StaticFinding]:
             return findings
 
         data = json.loads(raw_json)
-        for err in data.get("errors", []):
-            logger.warning("OpenGrep rule error: %s", err)
+        if data.get("errors"):
+            logger.warning("OpenGrep reported %d rule error(s)", len(data["errors"]))
         for issue in data.get("results", []):
             rel_path = issue.get("path", "").replace(files_dir, "").lstrip("/\\")
             findings.append(
@@ -240,7 +240,7 @@ def run_opengrep(files_dir: str, rules_file: str) -> list[StaticFinding]:
                 )
             )
     except Exception as e:
-        logger.error("OpenGrep error: %s", e)
+        logger.error("OpenGrep error (%s)", type(e).__name__)
 
     return findings
 
@@ -277,7 +277,7 @@ def run_detect_secrets(files_dir: str) -> list[StaticFinding]:
                     )
                 )
     except Exception as e:
-        logger.error("detect-secrets error: %s", e)
+        logger.error("detect-secrets error (%s)", type(e).__name__)
 
     return findings
 
@@ -336,10 +336,10 @@ def _query_osv_api(packages: list[PackageInfo], filepath: str) -> list[StaticFin
         with urllib.request.urlopen(req, timeout=30) as resp:
             response = json.loads(resp.read().decode("utf-8"))
     except urllib.error.URLError as e:
-        logger.error("OSV API request failed: %s", e)
+        logger.error("OSV API request failed (%s)", type(e).__name__)
         return findings
     except Exception as e:
-        logger.error("OSV API error: %s", e)
+        logger.error("OSV API error (%s)", type(e).__name__)
         return findings
 
     results = response.get("results", [])
@@ -484,33 +484,28 @@ def run_pip_audit(requirements_files: list) -> list[StaticFinding]:
                                         ),
                                     )
                                 )
-                        logger.info(
-                            "pip-audit: %d CVE(s) found in %s",
-                            vuln_count,
-                            req_file_path.split("/")[-1],
-                        )
+                        logger.info("pip-audit: %d CVE(s) found", vuln_count)
                         pip_audit_succeeded = True
                     else:
                         # Empty stdout — fall through to OSV fallback
-                        stderr_preview = result.stderr.strip()[:200]
                         logger.warning(
-                            "pip-audit: empty output — falling back to OSV API. Reason: %s",
-                            stderr_preview,
+                            "pip-audit: empty output — falling back to OSV API"
                         )
                 else:
-                    stderr_preview = result.stderr.strip()[:200]
                     logger.warning(
-                        "pip-audit exited %d — falling back to OSV API. Reason: %s",
+                        "pip-audit exited %d — falling back to OSV API",
                         result.returncode,
-                        stderr_preview,
                     )
 
             except json.JSONDecodeError as e:
                 logger.warning(
-                    "pip-audit JSON parse error — falling back to OSV API: %s", e
+                    "pip-audit JSON parse error — falling back to OSV API (%s)",
+                    type(e).__name__,
                 )
             except Exception as e:
-                logger.warning("pip-audit error — falling back to OSV API: %s", e)
+                logger.warning(
+                    "pip-audit error — falling back to OSV API (%s)", type(e).__name__
+                )
 
         # ── Attempt 2: OSV.dev direct API fallback ───────────────────────────────
         if not pip_audit_succeeded:
@@ -519,18 +514,13 @@ def run_pip_audit(requirements_files: list) -> list[StaticFinding]:
                 packages = _parse_pinned_packages(content)
                 if packages:
                     logger.info(
-                        "OSV fallback: querying %d pinned packages from %s...",
-                        len(packages),
-                        req_file_path.split("/")[-1],
+                        "OSV fallback: querying %d pinned packages...", len(packages)
                     )
                     findings.extend(_query_osv_api(packages, req_file_path))
                 else:
-                    logger.info(
-                        "OSV fallback: no pinned packages found in %s",
-                        req_file_path.split("/")[-1],
-                    )
+                    logger.info("OSV fallback: no pinned packages found")
             except Exception as e:
-                logger.error("OSV fallback error: %s", e)
+                logger.error("OSV fallback error (%s)", type(e).__name__)
 
     return findings
 

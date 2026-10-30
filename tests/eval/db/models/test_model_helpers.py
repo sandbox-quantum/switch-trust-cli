@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+from switch_trust.eval.core.models.model import EndpointScopedModel
 from switch_trust.eval.core.models.model_per_endpoint_limiter import (
     PerEndpointLimiter,
 )
@@ -73,15 +74,26 @@ class TestCreateModel(unittest.TestCase):
             ModelType.GEMINI,
             ModelType.LITELLM,
             ModelType.HUGGINGFACE,
-            ModelType.OLLAMA,
-            ModelType.OPENAI_COMPATIBLE,
         ):
             with self.subTest(model_type=sdk_type):
-                result = create_model(
-                    _db_model(type=sdk_type, host="http://irrelevant"),
-                )
+                result = create_model(_db_model(type=sdk_type))
                 self.assertIsInstance(result, RetryModel)
                 self.assertIs(result._model, inner)
+
+    @patch(
+        "switch_trust.eval.db.base.models.model_helpers._create_inner_model",
+    )
+    def test_sdk_type_with_host_is_scoped_not_limited(self, mock_create_inner):
+        inner = MagicMock()
+        mock_create_inner.return_value = inner
+        for sdk_type in (ModelType.OLLAMA, ModelType.OPENAI_COMPATIBLE):
+            with self.subTest(model_type=sdk_type):
+                result = create_model(
+                    _db_model(type=sdk_type, host="http://tenant.example"),
+                )
+                self.assertIsInstance(result._model, EndpointScopedModel)
+                self.assertIs(result._model._model, inner)
+                self.assertEqual(result._model._endpoint_url, "http://tenant.example")
 
     @patch(
         "switch_trust.eval.db.base.models.model_helpers._create_inner_model",
@@ -363,7 +375,6 @@ class TestCreateInnerModelADK(unittest.TestCase):
             host="http://adk-host:9000",
             immediate_result=True,
             headers=None,
-            connector_factory=None,
         )
 
     @patch(
@@ -380,7 +391,6 @@ class TestCreateInnerModelADK(unittest.TestCase):
             host="http://localhost:8000",
             immediate_result=False,
             headers=None,
-            connector_factory=None,
         )
 
     @patch(
@@ -399,7 +409,6 @@ class TestCreateInnerModelADK(unittest.TestCase):
             host="http://adk-host:9000",
             immediate_result=False,
             headers={"Authorization": "Bearer test-token"},
-            connector_factory=None,
         )
 
 
@@ -418,7 +427,6 @@ class TestCreateInnerModelOpenAIAgent(unittest.TestCase):
         MockModel.assert_called_once_with(
             host="http://agent-host:5000",
             endpoint="/chat",
-            connector_factory=None,
         )
 
     @patch(
@@ -433,7 +441,6 @@ class TestCreateInnerModelOpenAIAgent(unittest.TestCase):
         MockModel.assert_called_once_with(
             host="http://localhost:8000",
             endpoint="/run",
-            connector_factory=None,
         )
 
 
@@ -452,7 +459,6 @@ class TestCreateInnerModelAnthropicAgent(unittest.TestCase):
         MockModel.assert_called_once_with(
             host="http://agent-host:5000",
             endpoint="/invoke",
-            connector_factory=None,
         )
 
     @patch(
@@ -467,7 +473,6 @@ class TestCreateInnerModelAnthropicAgent(unittest.TestCase):
         MockModel.assert_called_once_with(
             host="http://localhost:8000",
             endpoint="/run",
-            connector_factory=None,
         )
 
 
@@ -531,7 +536,6 @@ class TestCreateInnerModelGenericHTTP(unittest.TestCase):
             headers={"Authorization": "Bearer xyz"},
             input_path="request.text",
             output_path="response.text",
-            connector_factory=None,
         )
 
     @patch(
@@ -548,7 +552,6 @@ class TestCreateInnerModelGenericHTTP(unittest.TestCase):
             headers=None,
             input_path="input",
             output_path="output",
-            connector_factory=None,
         )
 
     @patch(
@@ -567,7 +570,6 @@ class TestCreateInnerModelGenericHTTP(unittest.TestCase):
             headers=None,
             input_path="input",
             output_path="output",
-            connector_factory=None,
         )
 
 
@@ -588,7 +590,6 @@ class TestCreateInnerModelLangServe(unittest.TestCase):
             base_url="http://langserve:8000",
             chain_path="/my-chain",
             headers={"X-Token": "abc"},
-            connector_factory=None,
         )
 
     @patch(
@@ -604,7 +605,6 @@ class TestCreateInnerModelLangServe(unittest.TestCase):
             base_url="http://localhost:8000",
             chain_path="",
             headers=None,
-            connector_factory=None,
         )
 
 
@@ -689,7 +689,6 @@ class TestEnvVarResolution(unittest.TestCase):
             },
             input_path="input",
             output_path="output",
-            connector_factory=None,
         )
 
     @patch.dict("os.environ", {}, clear=True)

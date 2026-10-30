@@ -11,6 +11,10 @@ from switch_trust.eval.core.models.generator_model import (
     GeneratorConfig,
     VertexConfig,
 )
+from switch_trust.eval.core.models.model_per_endpoint_limiter import (
+    PerEndpointLimiter,
+)
+from switch_trust.eval.core.models.model_retry import RetryModel
 
 _SA_KEY = {
     "type": "service_account",
@@ -124,6 +128,82 @@ class TestGeneratorConfigFromEnv(unittest.TestCase):
         self.assertNotIn(secret, str(ctx.exception))
 
 
+class TestGeminiCredentialPresence(unittest.TestCase):
+    """`gemini_credential_present`: can `Client()` be built at all?
+
+    Deliberately wider than `gemini_api_key_present`, which asks the narrower
+    "was a Developer-API credential *configured*" that `validate()` holds the
+    worker to. Every combination google-genai itself accepts has to answer
+    True here, or the CLI's exit-20 refusal would reject runs that work.
+    """
+
+    def _from_env(self, env: dict[str, str]) -> GeneratorConfig:
+        with patch.dict(os.environ, env, clear=True):
+            return GeneratorConfig.from_env()
+
+    def test_nothing_configured_is_absent(self):
+        config = self._from_env({"GENERATOR_MODEL": "gemini:gemini-2.5-flash"})
+        self.assertFalse(config.gemini_credential_present)
+
+    def test_an_empty_key_is_absent(self):
+        """The reported case: `GEMINI_API_KEY=` set but empty."""
+        config = self._from_env(
+            {"GENERATOR_MODEL": "gemini:gemini-2.5-flash", "GEMINI_API_KEY": ""}
+        )
+        self.assertFalse(config.gemini_credential_present)
+
+    def test_google_api_key_is_present(self):
+        config = self._from_env(
+            {"GENERATOR_MODEL": "gemini:gemini-2.5-flash", "GOOGLE_API_KEY": "k"}
+        )
+        self.assertTrue(config.gemini_credential_present)
+
+    def test_gemini_api_key_alone_is_present(self):
+        """google-genai reads either name, so neither may be refused."""
+        config = self._from_env(
+            {"GENERATOR_MODEL": "gemini:gemini-2.5-flash", "GEMINI_API_KEY": "k"}
+        )
+        self.assertTrue(config.gemini_credential_present)
+        # The narrower field still says no: this is not a *configured*
+        # Developer-API credential by `validate()`'s stricter standard.
+        self.assertFalse(config.gemini_api_key_present)
+
+    def test_env_driven_vertex_needs_no_key(self):
+        """ADC carries its own credential; refusing it would be wrong."""
+        for value in ("true", "TRUE", "1"):
+            with self.subTest(value=value):
+                config = self._from_env(
+                    {
+                        "GENERATOR_MODEL": "gemini:gemini-2.5-flash",
+                        "GOOGLE_GENAI_USE_VERTEXAI": value,
+                    }
+                )
+                self.assertTrue(config.gemini_credential_present)
+
+    def test_a_falsy_vertex_flag_does_not_count(self):
+        config = self._from_env(
+            {
+                "GENERATOR_MODEL": "gemini:gemini-2.5-flash",
+                "GOOGLE_GENAI_USE_VERTEXAI": "false",
+            }
+        )
+        self.assertFalse(config.gemini_credential_present)
+
+    def test_a_vertex_service_account_is_present(self):
+        config = self._from_env(
+            {
+                "GENERATOR_MODEL": "gemini:gemini-2.5-flash",
+                "GOOGLE_VERTEX_CREDENTIALS_JSON": json.dumps(_SA_KEY),
+                "GOOGLE_CLOUD_LOCATION": "us-central1",
+            }
+        )
+        self.assertTrue(config.gemini_credential_present)
+
+    def test_non_gemini_is_never_refused(self):
+        config = self._from_env({"GENERATOR_MODEL": "openai:gpt-4o"})
+        self.assertTrue(config.gemini_credential_present)
+
+
 class TestGeneratorConfigValidate(unittest.TestCase):
     """Startup validation: usable credential + exercised construction."""
 
@@ -160,6 +240,23 @@ class _Score(BaseModel):
     score: float
 
 
+class TestGetGeneratorConfig(unittest.TestCase):
+    def setUp(self):
+        # Module-level installed config; keep tests independent of each other
+        # and of any prior set_generator_config call.
+        self._reset = patch.object(generator_model, "_config", None)
+        self._reset.start()
+        self.addCleanup(self._reset.stop)
+
+    def test_none_when_nothing_installed(self):
+        self.assertIsNone(generator_model.get_generator_config())
+
+    def test_returns_installed_config(self):
+        installed = _config("gemini", "gemini-3.8-flash")
+        generator_model.set_generator_config(installed)
+        self.assertIs(generator_model.get_generator_config(), installed)
+
+
 class TestGetGeneratorModel(unittest.TestCase):
     def setUp(self):
         # get_generator_model reads a module-level installed config; keep tests
@@ -191,6 +288,52 @@ class TestGetGeneratorModel(unittest.TestCase):
 
         mock_inner.assert_called_once_with(installed)
 
+    @patch.object(generator_model, "_create_inner")
+    def test_unbounded_by_default(self, mock_inner: MagicMock):
+        # 0 is the CLI's behaviour, and generator_model ships in flintai-cli,
+        # so the default must add no limiter at all.
+        mock_inner.return_value = MagicMock()
+        generator_model.set_generator_config(_config("openai", "gpt-4o"))
+
+        model = generator_model.get_generator_model()
+
+        assert not isinstance(model._model._model, PerEndpointLimiter)
+
+    @patch.object(generator_model, "_create_inner")
+    def test_concurrency_limit_wraps_the_generator(self, mock_inner: MagicMock):
+        # Without this cap, slots x concurrency x replicas lands hundreds of
+        # simultaneous judge calls on one shared Vertex project.
+        mock_inner.return_value = MagicMock()
+        generator_model.set_generator_config(
+            _config("gemini", "gemini-2.5-flash-lite", concurrency_limit=32)
+        )
+
+        model = generator_model.get_generator_model()
+
+        limiter = model._model._model
+        assert isinstance(limiter, PerEndpointLimiter)
+        assert limiter._limit == 32
+        # Keyed per generator model, so two differently-configured processes
+        # cannot accidentally share one budget.
+        assert limiter._endpoint_url == "generator:gemini:gemini-2.5-flash-lite"
+        # No jitter: it exists to spread an opening burst across a small tenant
+        # server, and this guards a per-minute cloud quota instead.
+        assert limiter._jitter_max == 0.0
+
+    @patch.object(generator_model, "_create_inner")
+    def test_limiter_sits_inside_the_retry(self, mock_inner: MagicMock):
+        # Retries are exactly what a 429 produces, so they have to queue on the
+        # same budget rather than route around it.
+        mock_inner.return_value = MagicMock()
+        generator_model.set_generator_config(
+            _config("openai", "gpt-4o", concurrency_limit=4)
+        )
+
+        model = generator_model.get_generator_model()
+
+        assert isinstance(model._model, RetryModel)
+        assert isinstance(model._model._model, PerEndpointLimiter)
+
 
 class TestGeneratorModel(unittest.IsolatedAsyncioTestCase):
     async def test_warns_without_output_schema(self):
@@ -217,6 +360,37 @@ class TestGeneratorModel(unittest.IsolatedAsyncioTestCase):
         # The schema is forwarded to the wrapped model.
         _, kwargs = inner.generate.await_args
         self.assertIs(kwargs["output_schema"], _Score)
+
+
+class TestCreateInnerRefusesAMissingGeminiCredential(unittest.TestCase):
+    """A judge with no key is refused with a type, not a bare SDK ValueError.
+
+    The CLI maps the type to exit 20; `Client()`'s own ValueError carries
+    nothing to classify from and lands on the catch-all 1.
+    """
+
+    def test_it_raises_before_the_client_is_built(self):
+        config = _config("gemini", "gemini-2.5-flash", gemini_credential_present=False)
+        with patch("google.genai.Client") as mock_client:
+            with self.assertRaises(generator_model.GeneratorCredentialError):
+                generator_model._create_inner(config)
+        mock_client.assert_not_called()
+
+    def test_the_message_names_every_way_to_fix_it(self):
+        config = _config("gemini", "gemini-2.5-flash", gemini_credential_present=False)
+        with self.assertRaises(generator_model.GeneratorCredentialError) as ctx:
+            generator_model._create_inner(config)
+        msg = str(ctx.exception)
+        self.assertIn("GOOGLE_API_KEY", msg)
+        self.assertIn("GEMINI_API_KEY", msg)
+        self.assertIn("GOOGLE_VERTEX_CREDENTIALS_JSON", msg)
+
+    def test_it_is_a_value_error(self):
+        """So the worker's `validate()` and every `except ValueError` are
+        unaffected by the new type."""
+        self.assertTrue(
+            issubclass(generator_model.GeneratorCredentialError, ValueError)
+        )
 
 
 class TestCreateInner(unittest.TestCase):

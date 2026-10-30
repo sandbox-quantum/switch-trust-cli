@@ -8,7 +8,7 @@ from switch_trust.eval.core.detectors.detector_garak import (
     _create_conversation,
     _extract_text,
 )
-from switch_trust.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model import ModelResponse, ResponseStatus
 
 
 def _make_response(text: str) -> ModelResponse:
@@ -144,6 +144,35 @@ class TestGarakDetector(unittest.IsolatedAsyncioTestCase):
         result = await detector.detect(_make_response("output"))
 
         self.assertAlmostEqual(result.score, 0.8)
+
+    async def test_blocked_response_returns_1_without_calling_garak(self):
+        mock_garak = MagicMock()
+        detector = self._make_detector(mock_garak)
+        response = ModelResponse(message=None, status=ResponseStatus.BLOCKED_SAFETY)
+
+        result = await detector.detect(response)
+
+        self.assertEqual(result.score, 1.0)
+        mock_garak.detect.assert_not_called()
+
+    async def test_empty_response_returns_1_without_calling_garak(self):
+        mock_garak = MagicMock()
+        detector = self._make_detector(mock_garak)
+        response = ModelResponse(message=None, status=ResponseStatus.EMPTY_RESPONSE)
+
+        result = await detector.detect(response)
+
+        self.assertEqual(result.score, 1.0)
+        mock_garak.detect.assert_not_called()
+
+    async def test_no_message_not_blocked_raises_without_calling_garak(self):
+        mock_garak = MagicMock()
+        detector = self._make_detector(mock_garak)
+        response = ModelResponse(message=None, status=ResponseStatus.ERROR)
+
+        with self.assertRaises(ValueError):
+            await detector.detect(response)
+        mock_garak.detect.assert_not_called()
 
     @patch("garak._plugins.load_plugin")
     async def test_lazy_loads_plugin(self, mock_load_plugin):

@@ -1,3 +1,4 @@
+import socket
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,6 +10,7 @@ from switch_trust.eval.core.models.model_retry import (
     RetryModel,
     _extract_retry_after,
 )
+from tests.eval.core.models.test_model_errors import dns_error
 
 
 class _StatusError(Exception):
@@ -211,6 +213,27 @@ class TestExponentialRetryModel(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(_StatusError):
             await model.generate(_make_message())
         self.assertEqual(inner.generate.call_count, 1)
+
+    async def test_host_not_found_raises_immediately(self):
+        inner = MagicMock()
+        inner.generate = AsyncMock(side_effect=dns_error(socket.EAI_NONAME))
+        model = ExponentialRetryModel(inner, max_retries=3)
+        with self.assertRaises(OSError):
+            await model.generate(_make_message())
+        self.assertEqual(inner.generate.call_count, 1)
+
+    @patch(
+        "switch_trust.eval.core.models.model_retry.asyncio.sleep",
+        new_callable=AsyncMock,
+    )
+    async def test_transient_dns_failure_still_retries(self, _):
+        inner = MagicMock()
+        inner.generate = AsyncMock(
+            side_effect=[dns_error(socket.EAI_AGAIN), _make_response()]
+        )
+        model = ExponentialRetryModel(inner, max_retries=3)
+        await model.generate(_make_message())
+        self.assertEqual(inner.generate.call_count, 2)
 
     @patch(
         "switch_trust.eval.core.models.model_retry.random.uniform", return_value=0.0

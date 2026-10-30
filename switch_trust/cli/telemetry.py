@@ -27,12 +27,22 @@ output) and is also excluded from the allowlist as a backstop — only the
 bounded ``exception.type`` class name is exported. This is the control that
 backs the consent prompt's promise that no code, prompts, keys, or personal
 data is ever collected.
+
+``OTLP_ENDPOINT=console`` is a local debug override: it swaps the OTLP
+exporters for OpenTelemetry's console ones, printing every log record and
+metric this module would otherwise ship, so an engineer can confirm what
+leaves the process without a real export. It does not bypass the telemetry
+consent prompt — `init_telemetry` is only ever called once consent is
+given — and every other value of the variable is ignored; there is only one
+production endpoint, unlike the inventory scanner's multi-destination
+`OTLP_ENDPOINT`.
 """
 
 from __future__ import annotations
 
 import atexit
 import logging
+import os
 import platform
 import sys
 from collections.abc import Generator
@@ -43,7 +53,7 @@ from opentelemetry._logs import SeverityNumber
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk._logs import LoggerProvider
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, ConsoleLogExporter
 from opentelemetry.sdk.metrics import (
     Counter,
     Histogram,
@@ -55,6 +65,7 @@ from opentelemetry.sdk.metrics import (
 )
 from opentelemetry.sdk.metrics.export import (
     AggregationTemporality,
+    ConsoleMetricExporter,
     PeriodicExportingMetricReader,
 )
 from opentelemetry.sdk.resources import Resource
@@ -63,7 +74,7 @@ from opentelemetry.trace import Span
 
 global_logger = logging.getLogger(__name__)
 
-_BASE_ENDPOINT = "https://telemetry.flintai.dev"
+_BASE_ENDPOINT = "https://telemetry.switchagents.ai"
 _SERVICE_NAME = "switch-trust-cli"
 
 # The event bridge that forwards OTel logs to Amplitude keys off the log
@@ -94,6 +105,13 @@ _ALLOWED_LOG_ATTRIBUTES = frozenset(
         "switch_trust.status",
         "switch_trust.duration_ms",
         "switch_trust.interrupted",
+        # The CLI's exit code (see cli/exit_codes.py). Load-bearing rather than
+        # decorative: classified exits travel as a single `CliExit`, so
+        # exception.type says "CliExit" for a missing path and a rejected API
+        # key alike — the code is the only thing that tells them apart. A
+        # bounded enum of ~20 values, and it names a class of outcome, never
+        # the path or credential that produced it.
+        "switch_trust.exit_code",
         "status",
         "exception.type",
     }
@@ -259,14 +277,24 @@ def init_telemetry(client_id: str, version: str) -> None:
             )
         )
 
+        console = os.getenv("OTLP_ENDPOINT") == "console"
+
         _logger_provider = LoggerProvider(resource=resource)
-        log_exporter = OTLPLogExporter(endpoint=_BASE_ENDPOINT + "/v1/logs")
+        log_exporter = (
+            ConsoleLogExporter()
+            if console
+            else OTLPLogExporter(endpoint=_BASE_ENDPOINT + "/v1/logs")
+        )
         _logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
 
-        metric_exporter = OTLPMetricExporter(
-            endpoint=_BASE_ENDPOINT + "/v1/metrics",
-            preferred_temporality=_DELTA_TEMPORALITY,
-            timeout=10,
+        metric_exporter = (
+            ConsoleMetricExporter()
+            if console
+            else OTLPMetricExporter(
+                endpoint=_BASE_ENDPOINT + "/v1/metrics",
+                preferred_temporality=_DELTA_TEMPORALITY,
+                timeout=10,
+            )
         )
         metric_reader = PeriodicExportingMetricReader(
             metric_exporter,
@@ -391,6 +419,23 @@ def record_error(span: Span | None, error: Exception) -> None:
         span.set_attribute("exception.type", type(error).__name__)
     except Exception:
         global_logger.debug("Failed to record error on telemetry span", exc_info=True)
+
+
+def record_exit_code(span: Span | None, code: int) -> None:
+    """Attach the process's exit code to the span before it ends.
+
+    `command_span` sets its attributes at span *start*, so anything decided by
+    the run itself has to be set before the `finally` that ends the span —
+    which is why this is a setter rather than another argument there.
+    """
+    if span is None:
+        return
+    try:
+        span.set_attribute("switch_trust.exit_code", int(code))
+    except Exception:
+        global_logger.debug(
+            "Failed to record exit code on telemetry span", exc_info=True
+        )
 
 
 def record_interruption(span: Span | None) -> None:

@@ -284,6 +284,43 @@ class TestFindRelevantFiles(unittest.TestCase):
             self.assertEqual(result[0].type, FileType.REQUIREMENTS)
             self.assertIsNone(result[0].framework)
 
+    @unittest.skipIf(os.geteuid() == 0, "root bypasses permission bits")
+    def test_an_unreadable_top_level_directory_raises(self):
+        """The scan target itself being unreadable is not "nothing found".
+
+        `scan_cli.handle_scan` turns this into exit 22 (TARGET_ERROR); an
+        empty-but-readable directory stays exit 23 (NO_TARGETS) — the two are
+        different problems with different fixes.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.chmod(tmpdir, 0o000)
+            try:
+                with self.assertRaises(OSError):
+                    find_relevant_files(tmpdir)
+            finally:
+                os.chmod(tmpdir, 0o755)
+
+    @unittest.skipIf(os.geteuid() == 0, "root bypasses permission bits")
+    def test_an_unreadable_subdirectory_is_skipped_not_fatal(self):
+        """Only the named target is fatal; a locked-down subtree is not.
+
+        A large repo with one permission-restricted subfolder (e.g. a vendored
+        cache) should still yield whatever the rest of the walk can see.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            locked = os.path.join(tmpdir, "locked")
+            os.mkdir(locked)
+            py_path = os.path.join(tmpdir, "agent.py")
+            with open(py_path, "w") as f:
+                f.write("import openai\nx = 1\n")
+            os.chmod(locked, 0o000)
+            try:
+                result = find_relevant_files(tmpdir)
+            finally:
+                os.chmod(locked, 0o755)
+
+            self.assertEqual([r.path for r in result], [py_path])
+
     def test_single_python_file_without_framework_is_skipped(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             py_path = os.path.join(tmpdir, "utils.py")

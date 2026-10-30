@@ -17,16 +17,26 @@ from typing import Any
 _INSTALL_HINT = "Install it with: pip install switch-trust-cli[full]"
 
 
+class MissingToolError(ImportError):
+    """An optional ``full``-extra dependency is not installed.
+
+    A subclass of ``ImportError`` rather than a new hierarchy, so any caller
+    that still wants the bare-import behavior keeps working; callers that need
+    to distinguish "this run needed a tool we don't have" from an unrelated
+    import bug (CLI exit code 26) catch this type specifically.
+    """
+
+
 def require_transformers_pipeline() -> Callable[..., Any]:
     """Return ``transformers.pipeline``.
 
-    Raises ``ImportError`` with an install hint if ``transformers`` (part of
-    the optional ``full`` extra) is not installed.
+    Raises ``MissingToolError`` with an install hint if ``transformers`` (part
+    of the optional ``full`` extra) is not installed.
     """
     try:
         from transformers import pipeline
     except ImportError as e:
-        raise ImportError(
+        raise MissingToolError(
             "transformers is required for HuggingFace models and toxicity "
             f"detection. {_INSTALL_HINT}"
         ) from e
@@ -41,7 +51,7 @@ def require_garak() -> ModuleType:
     they are attribute-accessible on the returned module — a bare
     ``import garak`` does not guarantee that.
 
-    Raises ``ImportError`` with an install hint if ``garak`` (part of the
+    Raises ``MissingToolError`` with an install hint if ``garak`` (part of the
     optional ``full`` extra) is not installed.
     """
     try:
@@ -51,7 +61,7 @@ def require_garak() -> ModuleType:
         import garak.attempt  # noqa: F401
         import garak.generators.base  # noqa: F401
     except ImportError as e:
-        raise ImportError(
+        raise MissingToolError(
             f"garak is required for garak probes and detectors. {_INSTALL_HINT}"
         ) from e
     return garak

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from switch_trust.eval.common.schema import PartType, Role
 from switch_trust.eval.core.detectors.detector import Detector, DetectorResult
-from switch_trust.eval.core.models.model import ModelResponse
+from switch_trust.eval.core.models.model import BLOCKED_STATUSES, ModelResponse
 from switch_trust.eval.core.optional_deps import require_garak
 
 if TYPE_CHECKING:
@@ -61,6 +61,15 @@ class GarakDetector(Detector):
         )
 
     def _detect_sync(self, response: ModelResponse) -> DetectorResult:
+        # Mirrors SinglePromptEvaluation's own guard: a blocked response is a
+        # pass, and anything else with no message has nothing to score. Garak
+        # itself has no such guard — handing it a response with no assistant
+        # turn crashes its HF pipeline on an empty input list.
+        if response.status in BLOCKED_STATUSES:
+            return DetectorResult(score=1.0)
+        if response.message is None:
+            raise ValueError("Model did not return a message or an error status")
+
         conversation = _create_conversation(response)
         attempt = require_garak().attempt.Attempt(prompt=conversation)
         results = self._ensure_loaded().detect(attempt)

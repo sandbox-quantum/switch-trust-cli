@@ -166,6 +166,42 @@ switch-trust scan agent.py
 
 # Specify output file
 switch-trust scan /path/to/code --output results.json
+
+# Fail the build on any high or critical finding
+switch-trust scan /path/to/code --fail-on high
+```
+
+#### Gating CI on severity
+
+`--fail-on SEVERITY` turns a scan into a quality gate. Without it, a completed
+scan always exits `0` however many findings it reported.
+
+`SEVERITY` is one of `critical`, `high`, `medium`, `low`, `info`, and the gate
+trips on any finding **at or above** it — `--fail-on high` fires on a `high` as
+well as a `critical`.
+
+Two details worth knowing before you rely on it:
+
+- **It counts findings after triage**, the ones in the summary and the output
+  file. Triage removes false positives, so a finding it downgrades is judged on
+  its new severity.
+- **A finding whose severity cannot be read trips the gate**, whatever the
+  threshold, and the message names the value. A security gate that silently
+  skipped what it could not parse would be worse than no gate.
+
+The report is always written before the gate is checked, so a failing job still
+has its results file to collect.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | no finding reached the threshold |
+| `5` | at least one did, or one had an unreadable severity |
+| `20` | the scanner model's API key is missing or was rejected |
+| `23` | nothing scannable was found at the path |
+
+```bash
+switch-trust scan /path/to/code --fail-on high
+if [ $? -eq 5 ]; then echo "security gate failed"; fi
 ```
 
 [Full scan guide](https://docs.switchagents.ai/switch-trust-cli/scan/getting-started)
@@ -188,6 +224,75 @@ switch-trust eval model-evaluations attach \
 
 # Run all evaluations for an agent
 switch-trust eval run --model my-agent
+
+# Fail the build if any evaluation scores below 0.8
+switch-trust eval run --model my-agent --fail-under 0.8
+```
+
+#### Gating CI on a score
+
+`--fail-under SCORE` turns a run into a quality gate. Without it, a completed run
+always exits `0` whatever it scored.
+
+`SCORE` is between 0 and 1, and it is the bar each evaluation must **meet** — a
+score of exactly `0.8` passes `--fail-under 0.8`. The check is per evaluation, not
+on the average, so a single failing evaluation cannot be averaged away by
+others that passed.
+
+The report is always written before the gate is checked, so a failing job still
+has its results file to collect.
+
+A run covering several evaluations stops at the first one that hits a problem
+re-running cannot fix — a missing judge credential, an unreadable prompt file,
+an uninstalled optional tool — rather than paying for the rest to fail the same
+way. It also gives up once three evaluations fail in a row, on the assumption
+the target is down. Either way, whatever scored before that point is still
+printed and written to the report, and the exit code is the one for the problem
+rather than `5`: a run that did not finish has no verdict for the gate to
+judge.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | every evaluation ran, and every score met the bar |
+| `5` | at least one evaluation scored below it |
+| `6` | the run has no verdict: nothing scored, or it stopped with evaluations unrun |
+| `20` | an API key is missing, or the provider rejected it |
+| `23` | no evaluations matched the model or tag filters |
+
+Exits `6` and `20` are reported whether or not `--fail-under` was passed. A
+credential problem, or a run with no verdict to report, is a broken run rather
+than a verdict — reporting success for it is the false green a gate exists to
+prevent. Only exit `5`, the verdict itself, is opt-in.
+
+Exit `6` covers both ways a run can end up without a verdict, and the message
+says which: no evaluation produced a score at all, or the run gave up partway
+and some of the evaluations you selected were never attempted. The second is
+still exit `6` even when the ones that did run all scored above the bar — a
+gate applied to the part of a suite that happened to run first is not a result
+you can act on.
+
+Exit `20` covers two credentials, and the message says which:
+
+- **The model under test.** A key that is simply *absent* is refused before
+  the run starts, so you pay no CI time to find out; a key the provider
+  *rejects* is reported after the run, since it takes a call to discover.
+  Either way, set the provider's variable (`GEMINI_API_KEY` /
+  `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or put a key in the
+  model's config entry.
+- **The judge/generator** named by `GENERATOR_MODEL`, which adversarial probes
+  and LLM-as-judge detectors need in addition to the model under test. For a
+  `gemini` generator set `GOOGLE_API_KEY` or `GEMINI_API_KEY`, or
+  `GOOGLE_VERTEX_CREDENTIALS_JSON` plus `GOOGLE_CLOUD_LOCATION` for Vertex AI.
+
+> **Upgrading:** this is the one behaviour change in the exit codes. Earlier
+> versions exited `0` when every evaluation errored, and when a run gave up
+> after three consecutive failures having scored something first — so a total
+> provider outage was indistinguishable from a clean run. If your pipeline
+> relies on that, branch on `6` explicitly.
+
+```bash
+switch-trust eval run --model my-agent --fail-under 0.8
+if [ $? -eq 5 ]; then echo "quality gate failed"; fi
 ```
 
 The `switch-trust eval` command requires configuration. See [Configuration](https://docs.switchagents.ai/switch-trust-cli/eval/eval-configuration) to:
@@ -205,7 +310,7 @@ The `switch-trust eval` command requires configuration. See [Configuration](http
 - [Configuration](https://docs.switchagents.ai/switch-trust-cli/eval/eval-configuration)
 - [Environment variables](https://docs.switchagents.ai/switch-trust-cli/reference/env-vars)
 - [Built-in evaluations](https://docs.switchagents.ai/switch-trust-cli/reference/builtin-evaluations)
-- [Data privacy](https://docs.switchagents.ai/switch-trust-cli/reference/data-privacy)
+- [Data privacy](https://docs.switchagents.ai/legal/cli-data-privacy)
 - [FAQ](https://docs.switchagents.ai/switch-trust-cli/resources/faq)
 
 ## Data privacy
@@ -214,7 +319,7 @@ Switch Trust runs on your machine, but several features can call external LLM pr
 (located in `~/.switch-trust/.env`, created by `switch-trust init`). You can set this to a remote managed LLM (i.e. `gemini`, `openai`, `anthropic`)
 or a locally hosted LLM (i.e. `litellm` or `ollama`).
 
-[Read more](https://docs.switchagents.ai/switch-trust-cli/reference/data-privacy).
+[Read more](https://docs.switchagents.ai/legal/cli-data-privacy).
 
 ### Telemetry
 

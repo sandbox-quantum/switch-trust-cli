@@ -25,8 +25,8 @@ from switch_trust.eval.core.eval.evaluation_multi import MultiEvaluation
 from switch_trust.eval.core.eval.evaluation_single import SingleEvaluation
 from switch_trust.eval.core.models.generator_model import get_generator_model
 from switch_trust.eval.core.models.model import (
+    BLOCKED_STATUSES,
     Model,
-    ResponseStatus,
     extract_final_text,
     extract_text_from_conversation,
     extract_text_from_message,
@@ -47,12 +47,6 @@ class StartingPromptsReply(BaseModel):
 
     prompts: list[str]
 
-
-_BLOCKED_STATUSES = {
-    ResponseStatus.BLOCKED_SAFETY,
-    ResponseStatus.BLOCKED_RECITATION,
-    ResponseStatus.BLOCKED_PROHIBITED,
-}
 
 # if a detector scores a target response below this threshold, consider
 # target to be broken (attack was successful)
@@ -256,7 +250,7 @@ class AdversarialTurnEvaluation(SingleEvaluation):
 
             target_response = await target_model.generate(user_msg)
 
-            if target_response.status in _BLOCKED_STATUSES:
+            if target_response.status in BLOCKED_STATUSES:
                 assistant_msg = Message(
                     content=Content.text(
                         Role.ASSISTANT,

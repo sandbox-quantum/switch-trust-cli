@@ -3,6 +3,7 @@
 import logging
 import os
 import stat
+import sys
 import uuid
 from pathlib import Path
 
@@ -121,19 +122,34 @@ def get_telemetry_consent() -> bool:
     return (resolve_env_var(TELEMETRY_CONSENT_ENV_VAR) or "").lower() == "true"
 
 
-def prompt_telemetry_consent() -> str:
+def stdin_is_interactive() -> bool:
+    """True only for a terminal: piped, closed or missing stdin can't answer a prompt."""
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except ValueError:
+        return False
+
+
+def prompt_telemetry_consent() -> str | None:
+    """Ask for analytics consent, or return ``None`` without asking.
+
+    Only a terminal can answer: piped or closed stdin would otherwise accept the
+    default or crash, so callers must treat ``None`` as "no consent, nothing to
+    persist" and let a later interactive run ask.
+    """
+    if not stdin_is_interactive():
+        return None
+
     console.print(
-        "[dim]Switch Trust collects anonymous usage analytics to improve the product.[/dim]"
+        "[dim]Switch Trust can collect pseudonymous usage analytics to improve the product.[/dim]"
     )
-    console.print(
-        "[dim]No code, prompts, keys, or personal data is ever collected.[/dim]"
-    )
+    console.print("[dim]No code, prompts, or keys are ever collected.[/dim]")
     console.print("[dim]You can change this at any time in your .env config.[/dim]")
     console.print()
     choice = select(
-        "Do you consent to sharing anonymous usage analytics?",
+        "Do you consent to sharing pseudonymous usage analytics?",
         options=["Y", "N"],
-        default_index=0,
+        default_index=1,
     )
     console.print()
 
@@ -149,6 +165,10 @@ def ensure_telemetry_consent() -> None:
         return
 
     value = prompt_telemetry_consent()
+    if value is None:
+        logger.info("stdin is not a terminal; telemetry off for this run")
+        os.environ[TELEMETRY_CONSENT_ENV_VAR] = "false"
+        return
     os.environ[TELEMETRY_CONSENT_ENV_VAR] = value
 
     env_path = get_switch_trust_env_path()

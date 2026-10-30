@@ -1,3 +1,6 @@
+import io
+import os
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -6,6 +9,7 @@ from switch_trust.cli import utils
 from switch_trust.cli.utils import (
     CLIENT_ID_ENV_VAR,
     TELEMETRY_CONSENT_ENV_VAR,
+    ensure_telemetry_consent,
     get_client_id,
     get_telemetry_consent,
     legacy_env_vars_used,
@@ -89,3 +93,45 @@ class TestBackwardsCompatAccessors:
         with patch.object(utils.console, "print") as mock_print:
             assert get_telemetry_consent() is False
         mock_print.assert_not_called()
+
+
+class _TtyStdin(io.StringIO):
+    def isatty(self):
+        return True
+
+
+class TestEnsureTelemetryConsent:
+    @pytest.fixture
+    def env_file(self, tmp_path, monkeypatch):
+        env_path = tmp_path / ".env"
+        env_path.write_text("GENERATOR_MODEL=x\n")
+        monkeypatch.setattr(utils, "get_switch_trust_env_path", lambda: env_path)
+        monkeypatch.setattr(utils, "is_ci", lambda: False)
+        return env_path
+
+    @pytest.mark.parametrize(
+        "stdin",
+        [io.StringIO("\n"), io.StringIO(""), None],
+        ids=["newline", "eof", "closed"],
+    )
+    def test_non_tty_stdin_is_no_consent_and_not_persisted(
+        self, env_file, monkeypatch, stdin
+    ):
+        monkeypatch.setattr(sys, "stdin", stdin)
+        ensure_telemetry_consent()
+        assert os.environ[TELEMETRY_CONSENT_ENV_VAR] == "false"
+        assert get_telemetry_consent() is False
+        assert TELEMETRY_CONSENT_ENV_VAR not in env_file.read_text()
+
+    def test_tty_stdin_prompts_with_no_default_and_persists(
+        self, env_file, monkeypatch
+    ):
+        monkeypatch.setattr(sys, "stdin", _TtyStdin())
+        with patch.object(utils, "select", return_value="Y") as mock_select:
+            ensure_telemetry_consent()
+        assert mock_select.call_args.kwargs == {
+            "options": ["Y", "N"],
+            "default_index": 1,
+        }
+        assert os.environ[TELEMETRY_CONSENT_ENV_VAR] == "true"
+        assert f"{TELEMETRY_CONSENT_ENV_VAR}=true" in env_file.read_text()

@@ -4,6 +4,7 @@ from types import ModuleType
 from unittest.mock import patch
 
 from switch_trust.eval.core.optional_deps import (
+    MissingToolError,
     require_garak,
     require_transformers_pipeline,
 )
@@ -15,7 +16,7 @@ class TestRequireTransformersPipeline(unittest.TestCase):
         # transformers`` to raise ImportError, simulating the package being
         # absent (i.e. the ``full`` extra not installed).
         with patch.dict(sys.modules, {"transformers": None}):
-            with self.assertRaises(ImportError) as ctx:
+            with self.assertRaises(MissingToolError) as ctx:
                 require_transformers_pipeline()
         self.assertIn("switch-trust-cli[full]", str(ctx.exception))
 
@@ -26,7 +27,7 @@ class TestRequireTransformersPipeline(unittest.TestCase):
 class TestRequireGarak(unittest.TestCase):
     def test_missing_raises_with_install_hint(self):
         with patch.dict(sys.modules, {"garak": None}):
-            with self.assertRaises(ImportError) as ctx:
+            with self.assertRaises(MissingToolError) as ctx:
                 require_garak()
         self.assertIn("switch-trust-cli[full]", str(ctx.exception))
 

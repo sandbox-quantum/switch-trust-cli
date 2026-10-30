@@ -308,14 +308,14 @@ def run_triage(
         try:
             model = make_model(scanner="agent", phase="triage")
         except (ValueError, ImportError) as e:
-            logger.error("Failed to create model: %s", e)
+            logger.error("Failed to create model (%s)", type(e).__name__)
             return None
 
     # ── Load prompt ────────────────────────────────────────────────────────────
     try:
         system_prompt = _load_triage_prompt()
     except FileNotFoundError as e:
-        logger.error("Triage prompt load failed: %s", e)
+        logger.error("Triage prompt load failed (%s)", type(e).__name__)
         return None
 
     # CVE deduplication: OSV returns one finding per CVE per package.
@@ -432,8 +432,9 @@ def run_triage(
     try:
         result = json.loads(text)
     except json.JSONDecodeError as e:
-        logger.error("JSON parse error: %s", e)
-        logger.error("Raw response (first 500 chars): %s", text[:500])
+        logger.error(
+            "JSON parse error at char %d of a %d-char response", e.pos, len(text)
+        )
         # On JSON parse failure, return an identity result (keep all findings,
         # dismiss none) — returning None causes the caller to silently discard
         # all triage work.
@@ -481,7 +482,7 @@ def run_triage(
         new_sev = item.get("ai_spm_severity")
         original = triage_input_by_id.get(fid)
         if original is None:
-            logger.warning("kept_finding_ids contains unknown id %s — skipping", fid)
+            logger.warning("kept_finding_ids contains an unknown id — skipping")
             continue
         reconstructed = dict(original)
         if new_sev:

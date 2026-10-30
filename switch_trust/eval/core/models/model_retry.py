@@ -7,6 +7,10 @@ from pydantic import BaseModel
 
 from switch_trust.eval.common.schema import Message
 from switch_trust.eval.core.models.model import Model, ModelResponse
+from switch_trust.eval.core.models.model_errors import (
+    is_host_not_found,
+    status_of,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +22,8 @@ _TRANSIENT_EXCEPTIONS = (
 
 _TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
 # Terminal statuses stop retries immediately. 401/403 mean bad credentials
-# and 404 means the endpoint is wrong - none recover by waiting.
+# and 404 means the endpoint is wrong - none recover by waiting. Nor does a
+# host that does not exist (see `_is_terminal`).
 _TERMINAL_STATUS_CODES = {401, 403, 404}
 # Upper bound on the delay we accept from a tenant-controlled Retry-After
 # header. Anything larger is clamped so a misconfigured or hostile endpoint
@@ -27,23 +32,17 @@ _TERMINAL_STATUS_CODES = {401, 403, 404}
 _MAX_RETRY_AFTER_SECONDS = 60.0
 
 
-def _status_of(exc: Exception) -> int | None:
-    for attr in ("status_code", "status", "code"):
-        status = getattr(exc, attr, None)
-        if isinstance(status, int):
-            return status
-    return None
-
-
 def _is_terminal(exc: Exception) -> bool:
-    status = _status_of(exc)
+    if is_host_not_found(exc):
+        return True
+    status = status_of(exc)
     return status is not None and status in _TERMINAL_STATUS_CODES
 
 
 def _is_transient(exc: Exception) -> bool:
     if isinstance(exc, _TRANSIENT_EXCEPTIONS):
         return True
-    status = _status_of(exc)
+    status = status_of(exc)
     return status is not None and status in _TRANSIENT_STATUS_CODES
 
 
