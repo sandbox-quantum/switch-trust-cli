@@ -1,0 +1,29 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic API-key fixtures in tests and detector prompt data whose values carry an obvious fake marker"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = [
+    '''^tests/''',
+    '''^switch_trust/data/detector_prompts/''',
+]
+stopwords = ["fake", "example", "placeholder", "dummy", "xxxxxxxx"]
+
+[[allowlists]]
+description = "Synthetic API-key fixtures that predate the fake-marker convention, pinned to their files"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = [
+    '''^tests/eval/common/test_log\.py$''',
+    '''^tests/scan/test_llm_provider\.py$''',
+    '''^tests/scan/test_agent_scanner_units\.py$''',
+    '''^switch_trust/data/detector_prompts/llm02_adversarial\.txt$''',
+]
+regexes = [
+    '''^abcdef123456$''',
+    '''^AIzaSyB1234567890abcdefghijklmnopqrstuvwx$''',
+    '''^sk-proj1234567890abcdef$''',
+    '''^sk-proj-abc123\.\.\.$''',
+]
