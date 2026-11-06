@@ -6,8 +6,8 @@ import re
 # KEY_NAME_PATTERN (common/py/servicelib), the same patterns roi's
 # platform/log.py imports directly — this file can't do the same because
 # cli_exporter/export.py copies eval/common/ verbatim into the standalone
-# flintai-cli PyPI package, which cannot depend on servicelib. Update both when
-# adding a new secret shape.
+# switch-trust-cli PyPI package, which cannot depend on servicelib. Update both
+# when adding a new secret shape.
 #
 # Two patterns, applied in this order — not one: re.sub never rescans text it
 # has already consumed, so if the key-name pattern ran first against

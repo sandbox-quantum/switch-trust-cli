@@ -24,7 +24,7 @@ class FailureDomain(StrEnum):
     """Who is at fault. Only `internal` and `provider` should ever page.
 
     `provider` is a third party across a network boundary — the LLM API, or the
-    flint backend we upload to. `user` is the customer's repo or workflow
+    Switch Trust backend we upload to. `user` is the customer's repo or workflow
     config. `internal` is our own code, including budgets we chose ourselves.
     """
 

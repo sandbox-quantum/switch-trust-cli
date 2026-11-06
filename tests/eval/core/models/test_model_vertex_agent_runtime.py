@@ -6,6 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from switch_trust.eval.common.schema import Content, Message, Role
 from switch_trust.eval.core.models.model import ResponseStatus
+from switch_trust.eval.core.models.model_errors import (
+    ErrorKind,
+    UntrustedTokenURIError,
+    classify_model_error,
+)
 from switch_trust.eval.core.models.model_vertex_agent_runtime import (
     VertexAgentRuntimeModel,
     _extract_final,
@@ -117,6 +122,25 @@ class TestServiceAccountCredentials(unittest.TestCase):
 
     def test_non_service_account_json_falls_back_to_token(self):
         self.assertIsNone(_service_account_credentials('{"type": "authorized_user"}'))
+
+    def test_non_google_token_uri_is_refused(self):
+        for uri in (
+            "https://token.attacker.example/token",
+            "http://127.0.0.1:8080/token",
+        ):
+            key = {
+                "type": "service_account",
+                "private_key": "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n",
+                "client_email": "sa@p.iam.gserviceaccount.com",
+                "token_uri": uri,
+            }
+            with (
+                self.subTest(uri=uri),
+                self.assertRaises(UntrustedTokenURIError) as ctx,
+            ):
+                _service_account_credentials(json.dumps(key))
+            self.assertIs(classify_model_error(ctx.exception), ErrorKind.BLOCKED)
+            self.assertNotIn(uri, str(ctx.exception))
 
 
 class TestVertexAgentRuntimeModel(unittest.IsolatedAsyncioTestCase):

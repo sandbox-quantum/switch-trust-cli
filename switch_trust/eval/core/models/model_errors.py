@@ -305,16 +305,25 @@ def log_level_for_run_failure(kind: ErrorKind) -> int:
     return logging.WARNING if kind in _CONFIDENTLY_TENANT_CAUSED else logging.ERROR
 
 
+class UntrustedTokenURIError(ValueError):
+    """A tenant service-account key whose ``token_uri`` is not Google's token endpoint.
+
+    google-auth POSTs a signed assertion to ``token_uri`` on every refresh, so a
+    tenant-supplied key could otherwise point the worker at any URL.
+    """
+
+
 def classify_model_error(exc: Exception) -> ErrorKind:
     """Map a model/agent call failure to its customer-facing kind.
 
-    Covers HTTP and transport failures, plus the SSRF guard's refusal. Other
-    platform-level causes (an invalid eval config) are layered on by
-    `platform/errors.py::classify_run_error`, which `core` cannot import.
+    Covers HTTP and transport failures, plus the SSRF guard's refusal and a tenant
+    credential refused for its token endpoint. Other platform-level causes (an
+    invalid eval config) are layered on by `platform/errors.py::classify_run_error`,
+    which `core` cannot import.
     """
     if is_generator_failure(exc):
         return ErrorKind.INTERNAL_ERROR
-    if isinstance(exc, SsrfBlockedError):
+    if isinstance(exc, SsrfBlockedError | UntrustedTokenURIError):
         return ErrorKind.BLOCKED
     # Before the OSError branch below: TimeoutError subclasses OSError, and
     # asyncio.TimeoutError has been an alias for it since 3.11.

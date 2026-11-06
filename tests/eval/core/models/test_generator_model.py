@@ -290,8 +290,8 @@ class TestGetGeneratorModel(unittest.TestCase):
 
     @patch.object(generator_model, "_create_inner")
     def test_unbounded_by_default(self, mock_inner: MagicMock):
-        # 0 is the CLI's behaviour, and generator_model ships in flintai-cli,
-        # so the default must add no limiter at all.
+        # 0 is the CLI's behaviour, and generator_model ships in
+        # switch-trust-cli, so the default must add no limiter at all.
         mock_inner.return_value = MagicMock()
         generator_model.set_generator_config(_config("openai", "gpt-4o"))
 
@@ -503,6 +503,27 @@ class TestParseServiceAccount(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             generator_model._parse_service_account(json.dumps(key))
         self.assertIn("service-account key", str(ctx.exception))
+
+    def test_operator_key_with_custom_token_uri_is_accepted(self):
+        key = {**_SA_KEY, "token_uri": "https://token.example.com/token"}
+        self.assertEqual(generator_model._parse_service_account(json.dumps(key)), key)
+
+    def test_require_google_token_uri_accepts_google_endpoints(self):
+        for uri in generator_model.GOOGLE_TOKEN_URIS:
+            with self.subTest(uri=uri):
+                generator_model._require_google_token_uri({"token_uri": uri}, "key")
+
+    def test_require_google_token_uri_refuses_other_endpoints(self):
+        for uri in (
+            "https://token.attacker.example/token",
+            "http://169.254.169.254/token",
+        ):
+            with (
+                self.subTest(uri=uri),
+                self.assertRaises(generator_model.UntrustedTokenURIError) as ctx,
+            ):
+                generator_model._require_google_token_uri({"token_uri": uri}, "key")
+            self.assertNotIn(uri, str(ctx.exception))
 
     def test_missing_fields_raises(self):
         key = {"type": "service_account", "project_id": "p"}
