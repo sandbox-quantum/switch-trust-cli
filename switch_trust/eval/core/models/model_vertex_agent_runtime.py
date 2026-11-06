@@ -221,6 +221,7 @@ def _service_account_credentials(credential: str | None) -> Any | None:
 
     from switch_trust.eval.core.models.generator_model import (  # noqa: PLC0415 - avoids a module-level cycle
         _parse_service_account,
+        _require_google_token_uri,
     )
 
     try:
@@ -228,6 +229,7 @@ def _service_account_credentials(credential: str | None) -> Any | None:
     except ValueError:
         # Not a service-account key — treat it as a raw access token.
         return None
+    _require_google_token_uri(info, source="endpoint_credential")
 
     return service_account.Credentials.from_service_account_info(
         info,

@@ -11,6 +11,7 @@ import openai
 from switch_trust.eval.core.models.model_errors import (
     ErrorKind,
     SsrfBlockedError,
+    UntrustedTokenURIError,
     classify_model_error,
     generator_scope,
     in_generator_scope,
@@ -94,6 +95,11 @@ class TestClassifyModelError(unittest.TestCase):
     def test_other_4xx_is_a_config_problem(self):
         # The endpoint answered and rejected the request shape.
         self.assertIs(classify_model_error(_StatusError(400)), ErrorKind.INVALID_CONFIG)
+
+    def test_untrusted_token_uri_is_blocked(self):
+        self.assertIs(
+            classify_model_error(UntrustedTokenURIError("x")), ErrorKind.BLOCKED
+        )
 
     def test_timeout_wins_over_the_oserror_branch(self):
         # TimeoutError subclasses OSError, which would otherwise read as

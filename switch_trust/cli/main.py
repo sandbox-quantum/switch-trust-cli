@@ -33,7 +33,6 @@ from switch_trust.cli.utils import (
     get_switch_trust_dir,
     get_telemetry_consent,
     is_ci,
-    legacy_env_vars_used,
     stdin_is_interactive,
 )
 from switch_trust.cli.version import VERSION
@@ -419,10 +418,6 @@ def main(argv: list[str] | None = None) -> int:
         client_id = get_client_id()
         if client_id:
             init_telemetry(client_id, VERSION)
-
-    # Separate any deprecated-env-var notes above from the command output below.
-    if legacy_env_vars_used():
-        console.print()
 
     def _try_init_telemetry_after_init() -> None:
         """Re-check consent after init creates the .env for the first time."""

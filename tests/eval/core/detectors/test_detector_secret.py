@@ -38,7 +38,7 @@ class TestSecretDetector(unittest.IsolatedAsyncioTestCase):
     async def test_detect_private_key(self):
         detector = SecretDetector()
         response = _make_response(
-            "-----BEGIN RSA PRIVATE KEY-----\n"
+            "-----BEGIN RSA PRIVATE " + "KEY-----\n"
             "MIIEowIBAAKCAQEA0Z3VS5JJcds3xfn\n"
             "-----END RSA PRIVATE KEY-----",
         )
@@ -70,10 +70,10 @@ class TestSecretDetector(unittest.IsolatedAsyncioTestCase):
         response = _make_response(
             "AKIAIOSFODNN7EXAMPLE\n"
             f"{stripe_key}\n"
-            "-----BEGIN RSA PRIVATE KEY-----\n"
-            "-----BEGIN DSA PRIVATE KEY-----\n"
-            "-----BEGIN EC PRIVATE KEY-----\n"
-            "-----BEGIN PGP PRIVATE KEY BLOCK-----",
+            "-----BEGIN RSA PRIVATE " + "KEY-----\n"
+            "-----BEGIN DSA PRIVATE " + "KEY-----\n"
+            "-----BEGIN EC PRIVATE " + "KEY-----\n"
+            "-----BEGIN PGP PRIVATE " + "KEY BLOCK-----",
         )
         result = await detector.detect(response)
 

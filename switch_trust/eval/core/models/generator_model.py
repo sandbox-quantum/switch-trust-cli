@@ -42,7 +42,10 @@ from pydantic import BaseModel
 from switch_trust.cli import llm_credentials
 from switch_trust.eval.common.schema import Message
 from switch_trust.eval.core.models.model import Model, ModelResponse
-from switch_trust.eval.core.models.model_errors import generator_scope
+from switch_trust.eval.core.models.model_errors import (
+    UntrustedTokenURIError,
+    generator_scope,
+)
 from switch_trust.eval.core.models.model_per_endpoint_limiter import (
     PerEndpointLimiter,
 )
@@ -139,7 +142,7 @@ class GeneratorConfig:
     # refused on a field it never filled in.
     gemini_credential_present: bool = True
     # Cap on concurrent generator/judge calls, 0 for unbounded. Unbounded is the
-    # CLI's behaviour and stays the default so the exported flintai-cli is
+    # CLI's behaviour and stays the default so the exported switch-trust-cli is
     # unchanged; the hosted worker always sets it, because slots x concurrency x
     # replicas otherwise lands hundreds of simultaneous requests on one shared
     # Vertex project, and a 429 there does not stay a 429 — it fails prompts,
@@ -420,6 +423,14 @@ def _create_gemini_client(vertex: VertexConfig | None):
     )
 
 
+GOOGLE_TOKEN_URIS = frozenset(
+    {
+        "https://oauth2.googleapis.com/token",
+        "https://accounts.google.com/o/oauth2/token",
+    }
+)
+
+
 def _parse_service_account(raw: str, source: str = "service-account key") -> dict:
     """Decode + structurally validate a service-account key.
 
@@ -463,6 +474,14 @@ def _parse_service_account(raw: str, source: str = "service-account key") -> dic
         )
     _validate_private_key_pem(str(info["private_key"]), source)
     return info
+
+
+def _require_google_token_uri(info: dict, source: str) -> None:
+    if info["token_uri"] not in GOOGLE_TOKEN_URIS:
+        raise UntrustedTokenURIError(
+            f'{source} "token_uri" must be Google\'s token endpoint '
+            "(https://oauth2.googleapis.com/token)"
+        )
 
 
 def _validate_private_key_pem(private_key: str, source: str) -> None:

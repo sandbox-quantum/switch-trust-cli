@@ -43,8 +43,8 @@ class ModelResponseParseError(ValueError):
 logger = logging.getLogger(__name__)
 
 # TypeVar rather than PEP 695 `[T: BaseModel]` syntax: eval/core is exported to
-# the flintai-cli wheel (requires-python >= 3.11), and PEP 695 type parameters
-# are a syntax error before 3.12.
+# the switch-trust-cli wheel (requires-python >= 3.11), and PEP 695 type
+# parameters are a syntax error before 3.12.
 T = TypeVar("T", bound=BaseModel)
 
 # Name of the forced tool used by providers that emit structured output via
